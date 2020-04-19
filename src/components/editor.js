@@ -68,25 +68,27 @@ const Editor = ({ setCssTree }) => {
                     <path d="M4 6h16M4 12h16m-7 6h7"></path>
                 </svg>
             </div>
-            <CodeMirror
-                value={editorState.value}
-                options={{
-                    mode: 'css',
-                    theme: 'material',
-                    lineNumbers: true,
-                    matchBrackets: true,
-                    autoCloseBrackets: true,
-                    gutters: ['CodeMirror-lint-markers'],
-                    lint: true,
-                }}
-                onBeforeChange={(editor, data, value) => {
-                    setEditorState({ editor, data, value });
-                }}
-                onChange={(editor, data, value) => {
-                    setCssTree(parse(value));
-                    console.log(parse(value));
-                }}
-            />
+            {typeof window !== 'undefined' && window.navigator && (
+                <CodeMirror
+                    value={editorState.value}
+                    options={{
+                        mode: 'css',
+                        theme: 'material',
+                        lineNumbers: true,
+                        matchBrackets: true,
+                        autoCloseBrackets: true,
+                        gutters: ['CodeMirror-lint-markers'],
+                        lint: true,
+                    }}
+                    onBeforeChange={(editor, data, value) => {
+                        setEditorState({ editor, data, value });
+                    }}
+                    onChange={(editor, data, value) => {
+                        setCssTree(parse(value));
+                        console.log(parse(value));
+                    }}
+                />
+            )}
         </div>
     );
 };

@@ -17,9 +17,7 @@ const IndexPage = () => {
             className="h-screen w-screen overflow-hidden flex relative"
             style={{ minWidth: '812px' }}
         >
-            {typeof window !== 'undefined' && window.navigator && (
-                <Editor setCssTree={setCssTree} />
-            )}
+            <Editor setCssTree={setCssTree} />
             <SEO title="Convert Css To Tailwind" />
             <div className="flex flex-col h-full flex-grow relative">
                 <Output cssTree={cssTree} settings={settings} />
