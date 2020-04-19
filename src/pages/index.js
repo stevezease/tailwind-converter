@@ -5,8 +5,6 @@ import '../style.css';
 import Settings from '../components/settings';
 import Output from '../components/output';
 
-require('codemirror/mode/css/css');
-
 const IndexPage = () => {
     const [cssTree, setCssTree] = useState([]);
     const [settings, setSettings] = useState({
@@ -19,13 +17,16 @@ const IndexPage = () => {
             className="h-screen w-screen overflow-hidden flex relative"
             style={{ minWidth: '812px' }}
         >
-            <Editor setCssTree={setCssTree} />
+            {typeof window !== 'undefined' && window.navigator && (
+                <Editor setCssTree={setCssTree} />
+            )}
             <SEO title="Convert Css To Tailwind" />
             <div className="flex flex-col h-full flex-grow relative">
                 <Output cssTree={cssTree} settings={settings} />
                 <a
                     href="https://github.com/stevezease/tailwind-converter"
                     target="_blank"
+                    rel="noopener noreferrer"
                 >
                     <svg
                         viewBox="0 0 16 16"

@@ -5,7 +5,7 @@ const TailwindBlock = ({ tailWindStyles }) => {
     const [copied, setCopied] = useState(false);
     const [copiedText, setCopiedText] = useState('');
     useEffect(() => {
-        if (tailWindStyles != copiedText) {
+        if (tailWindStyles !== copiedText) {
             setCopied(false);
         }
     });

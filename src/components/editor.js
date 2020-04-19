@@ -9,10 +9,14 @@ import 'codemirror/addon/search/match-highlighter';
 import parseCSS from 'css-rules';
 import { css } from 'js-beautify';
 import CSSLint from 'csslint';
+import 'codemirror/mode/css/css';
+import 'codemirror/addon/lint/lint';
+import 'codemirror/addon/lint/css-lint.js';
 
-require('codemirror/addon/lint/lint');
-require('codemirror/addon/lint/css-lint.js');
-window.CSSLint = CSSLint.CSSLint;
+if (typeof window !== `undefined`) {
+    window.CSSLint = CSSLint.CSSLint;
+}
+
 const initialEditorOptions = {
     value: '/* PASTE CSS HERE */',
     data: {},
