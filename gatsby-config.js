@@ -24,7 +24,7 @@ module.exports = {
                 background_color: `#663399`,
                 theme_color: `#663399`,
                 display: `minimal-ui`,
-                icon: `src/images/tailwind.ico`, // This path is relative to the root of the site.
+                icon: `src/images/tailwind.png`, // This path is relative to the root of the site.
             },
         },
         {
