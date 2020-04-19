@@ -10,19 +10,18 @@ const TailwindBlock = ({ tailWindStyles }) => {
         }
     });
     return (
-        <div
-            onClick={() => {
-                clipboard.writeText(tailWindStyles);
-                setCopied(true);
-                setCopiedText(tailWindStyles);
-            }}
-        >
+        <div>
             <div
                 className={`rounded h-6 leading-6 cursor-pointer px-1 inline-block transition ${
                     copied
                         ? 'text-green-900 bg-green-200'
                         : 'text-teal-900 bg-gray-200 hover:bg-teal-800 hover:text-white'
                 }`}
+                onClick={() => {
+                    clipboard.writeText(tailWindStyles);
+                    setCopied(true);
+                    setCopiedText(tailWindStyles);
+                }}
             >
                 <div className="flex items-center">
                     <svg
