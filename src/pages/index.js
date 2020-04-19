@@ -14,7 +14,7 @@ const IndexPage = () => {
     });
     return (
         <div
-            className="h-screen w-screen overflow-hidden flex relative"
+            className="h-screen w-screen max-w-full overflow-hidden flex relative"
             style={{ minWidth: '812px' }}
         >
             <Editor setCssTree={setCssTree} />
