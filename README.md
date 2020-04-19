@@ -1,5 +1,5 @@
 <!-- AUTO-GENERATED-CONTENT:START (STARTER) -->
-<p align="center">
+<p align="center" style="margin-bottom: 0px">
        <a href="https://tailwind-converter.netlify.app/" alt="TailWindConverter">
        <img src="https://i.imgur.com/AHEcNqy.png" width=64/>
   </a>
