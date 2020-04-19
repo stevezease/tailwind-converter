@@ -2,6 +2,7 @@ import TailWindMap from '../constants';
 import { convertColor, isColor } from './color';
 import { convertSpacing } from './spacing';
 import { convertFontWeight, convertLineHeight, convertFontSize } from './text';
+import { convertBorderRadius } from './border';
 
 export const convertCss = (
     property,
@@ -80,6 +81,8 @@ const processValue = (property, value, tailWindStyles, errors, settings) => {
                 errors,
                 settings
             );
+        case 'border-radius':
+            return convertBorderRadius(value, settings);
         default:
             return value;
     }
