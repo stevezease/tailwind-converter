@@ -7,6 +7,9 @@
 @import '../node_modules/codemirror/lib/codemirror.css';
 @import '../node_modules/codemirror/theme/material.css';
 
+html {
+    overflow-y: hidden;
+}
 body {
     font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI',
         Roboto, 'Helvetica Neue', Arial, 'Noto Sans', sans-serif,
