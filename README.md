@@ -1,7 +1,7 @@
 <!-- AUTO-GENERATED-CONTENT:START (STARTER) -->
 <p align="center">
   <a href="https://tailwind-converter.netlify.app/">
-    <img alt="TailWindConverter" src="https://raw.githubusercontent.com/stevezease/tailwind-converter/master/src/images/tailwind.png" width="60" />
+    <img alt="TailWindConverter" src="https://raw.githubusercontent.com/stevezease/tailwind-converter/master/src/images/tailwind.svg" width="60" />
   </a>
 </p>
 <h1 align="center">
