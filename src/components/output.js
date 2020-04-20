@@ -3,7 +3,7 @@ import Header from './header';
 import { convertCss } from '../scripts/parser/parser';
 import TailwindBlock from './tailwind-block';
 
-const Output = ({ settings, cssTree }) => {
+const Output = ({ settings, cssTree, editorErrors }) => {
     const parseStyleTree = (styleTree, selector) => {
         const tailWindStyles = [];
         const errors = [];
@@ -15,6 +15,7 @@ const Output = ({ settings, cssTree }) => {
         }
         return [tailWindStyles, errors];
     };
+    console.log(cssTree);
     return (
         <div className="flex-grow h-full w-full p-2 border-box overflow-y-auto">
             <div class="flex tracking-wide text-teal-900 text-lg items-center uppercase font-bold mb-2">
@@ -31,7 +32,18 @@ const Output = ({ settings, cssTree }) => {
                 </svg>
                 Css Tailwind Converter
             </div>
+            {/* {(!cssTree || cssTree.length === 0) && editorErrors && (
+                <div className="text-red-900 text-base my-4">
+                    Error parsing CSS, please fix any errors
+                </div>
+            )} */}
+            {(!cssTree || cssTree.length === 0) && (
+                <div className="text-teal-900 text-base my-4">
+                    Type or paste CSS to the right to get started!
+                </div>
+            )}
             {cssTree &&
+                cssTree.length !== 0 &&
                 cssTree.map(([selector, styleTree]) => {
                     const [tailWindStyles, errors] = parseStyleTree(
                         styleTree,

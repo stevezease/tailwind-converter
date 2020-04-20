@@ -12,6 +12,7 @@ import CSSLint from 'csslint';
 import 'codemirror/mode/css/css';
 import 'codemirror/addon/lint/lint';
 import 'codemirror/addon/lint/css-lint.js';
+import _ from 'lodash';
 
 if (typeof window !== `undefined`) {
     window.CSSLint = CSSLint.CSSLint;
@@ -23,7 +24,16 @@ const initialEditorOptions = {
     editor: {},
 };
 
-const Editor = ({ setCssTree }) => {
+const debouncedUpdateTree = _.debounce(
+    (setCssTree, parse, value, setEditorErrors, errors) => {
+        setCssTree(parse(value));
+        setEditorErrors(errors);
+        console.log(errors);
+    },
+    500
+);
+
+const Editor = ({ setCssTree, setEditorErrors }) => {
     const [editorState, setEditorState] = useState(initialEditorOptions);
     const tidy = () => {
         try {
@@ -84,8 +94,21 @@ const Editor = ({ setCssTree }) => {
                         setEditorState({ editor, data, value });
                     }}
                     onChange={(editor, data, value) => {
-                        setCssTree(parse(value));
-                        console.log(parse(value));
+                        console.log(
+                            editor.state.lint,
+                            editor.state.lint.marked,
+                            editor.state.lint.marked.length
+                        );
+                        debouncedUpdateTree(
+                            setCssTree,
+                            parse,
+                            value,
+                            setEditorErrors,
+                            editor.state.lint.marked.length > 0
+                        );
+                        // setCssTree(parse(value));
+                        // setEditorErrors(editor.state.lint.marked.length > 0);
+                        // console.log(editor, data, parse(value));
                     }}
                 />
             )}

@@ -19,6 +19,7 @@
     "gatsby-source-filesystem": "^2.2.2",
     "gatsby-transformer-sharp": "^2.4.3",
     "js-beautify": "^1.11.0",
+    "lodash": "^4.17.15",
     "nearest-color": "^0.4.4",
     "prop-types": "^15.7.2",
     "react": "^16.12.0",

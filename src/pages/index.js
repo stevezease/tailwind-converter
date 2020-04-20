@@ -7,6 +7,7 @@ import Output from '../components/output';
 
 const IndexPage = () => {
     const [cssTree, setCssTree] = useState([]);
+    const [editorErrors, setEditorErrors] = useState(false);
     const [settings, setSettings] = useState({
         remConversion: 16,
         autoConvertSpacing: true,
@@ -17,10 +18,14 @@ const IndexPage = () => {
             className="h-screen w-screen max-w-full overflow-hidden flex relative"
             style={{ minWidth: '812px' }}
         >
-            <Editor setCssTree={setCssTree} />
+            <Editor setCssTree={setCssTree} setEditorErrors={setEditorErrors} />
             <SEO title="Convert Css To Tailwind" />
             <div className="flex flex-col h-full flex-grow relative">
-                <Output cssTree={cssTree} settings={settings} />
+                <Output
+                    cssTree={cssTree}
+                    settings={settings}
+                    editorErrors={editorErrors}
+                />
                 <a
                     href="https://github.com/stevezease/tailwind-converter"
                     target="_blank"
