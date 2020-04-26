@@ -4,7 +4,6 @@ import Editor from '../components/editor';
 import '../style.css';
 import Settings from '../components/settings';
 import Output from '../components/output';
-import Helmet from 'react-helmet';
 
 const IndexPage = () => {
     const [cssTree, setCssTree] = useState([]);
@@ -19,12 +18,6 @@ const IndexPage = () => {
             className="h-screen w-screen max-w-full overflow-hidden flex relative"
             style={{ minWidth: '812px' }}
         >
-            <Helmet>
-                <meta
-                    name="google-site-verification"
-                    content="MiBwrqoOFZRpmJ4Ar52jHqGy91bRDEdXqFiUZS9pxB8"
-                />
-            </Helmet>
             <Editor setCssTree={setCssTree} setEditorErrors={setEditorErrors} />
             <SEO
                 title="Convert Css To Tailwind"
