@@ -3,6 +3,7 @@ import { convertColor, isColor } from './color';
 import { convertSpacing } from './spacing';
 import { convertFontWeight, convertLineHeight, convertFontSize } from './text';
 import { convertBorderRadius } from './border';
+import { convertDimensions } from './dimensions';
 
 export const convertCss = (
     property,
@@ -64,6 +65,9 @@ const processValue = (property, value, tailWindStyles, errors, settings) => {
             return convertLineHeight(value, settings);
         case 'font-size':
             return convertFontSize(value, settings);
+        case 'height':
+        case 'width':
+            return convertDimensions(value, settings);
         case 'padding':
         case 'margin':
         case 'padding-top':
@@ -87,6 +91,13 @@ const processValue = (property, value, tailWindStyles, errors, settings) => {
             return value;
     }
 };
+
+// const handleSettings = (fn, value, settings, key) => (...args) => {
+//     if (!settings[key]) {
+//         return value;
+//     }
+//     return fn(args);
+// }
 
 // JSON object that holds direct css conversions
 const conversionObj = {
