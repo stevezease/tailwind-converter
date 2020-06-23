@@ -1,5 +1,5 @@
 // https://github.com/scniro/react-codemirror2/issues/83
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Controlled as CodeMirror } from 'react-codemirror2';
 import 'codemirror/addon/edit/matchbrackets';
 import 'codemirror/addon/edit/closebrackets';
@@ -19,7 +19,25 @@ if (typeof window !== `undefined`) {
 }
 
 const initialEditorOptions = {
-    value: '/* PASTE CSS HERE */',
+    value: `/* PASTE CSS HERE */
+
+example1 {
+  height: 5px;
+  width: 10px;
+  background: gray;
+  border-width: 1px;
+  border-radius: 3px;
+  /* Complex/Shorthand styles Not supported*/
+  padding: 5px 10px;
+}
+
+example2 {
+  position: absolute;
+  right: 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}`,
     data: {},
     editor: {},
 };
@@ -55,6 +73,7 @@ const Editor = ({ setCssTree, setEditorErrors }) => {
             console.error('error parsing CSS', e);
         }
     };
+
     return (
         <div className="relative h-full w-4/12">
             <div
@@ -92,6 +111,15 @@ const Editor = ({ setCssTree, setEditorErrors }) => {
                     }}
                     onBeforeChange={(editor, data, value) => {
                         setEditorState({ editor, data, value });
+                    }}
+                    editorDidMount={(editor, [next]) => {
+                        debouncedUpdateTree(
+                            setCssTree,
+                            parse,
+                            initialEditorOptions.value,
+                            setEditorErrors,
+                            editor.state.lint.marked.length > 0
+                        );
                     }}
                     onChange={(editor, data, value) => {
                         console.log(
