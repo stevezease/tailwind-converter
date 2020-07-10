@@ -4,11 +4,11 @@
        <img src="https://i.imgur.com/AHEcNqy.png" width=64/>
   </a>
 </p>
-<a href="https://tailwind-converter.netlify.app/" alt="TailWindConverter">
        <h1 align="center">
-              TailWind Converter
+              <a href="https://tailwind-converter.netlify.app/" alt="TailWindConverter">
+                     TailWind Converter
+              </a>
        </h1>
-</a>
 
 An Gatsby webapp that converts css in to Tailwind
 
