@@ -12,6 +12,8 @@
 
 An Gatsby webapp that converts css in to Tailwind
 
+Open to Contributors and Pull Requests for the project. 
+
 ## 🚀 Quick start
 
 1.  **Clone or Fork the Repo**
@@ -50,7 +52,9 @@ A quick look at the top-level files and directories you'll see in a Gatsby proje
 
 1.  **`/node_modules`**: This directory contains all of the modules of code that your project depends on (npm packages) are automatically installed.
 
-2.  **`/src`**: This directory will contain all of the code related to what you will see on the front-end of your site (what you see in the browser) such as your site header or a page template. `src` is a convention for “source code”. Scripts folder contains all of the conversion logic.
+2.  **`/src`**: This directory will contain all of the code related to what you will see on the front-end of your site (what you see in the browser) such as your site header or a page template. `src` is a convention for “source code”. 
+
+2a.  **/src/scripts**: This folder contains all of the conversion logic.
 
 3.  **`.gitignore`**: This file tells git which files it should not track / not maintain a version history for.
 
