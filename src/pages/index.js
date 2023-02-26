@@ -12,6 +12,7 @@ const IndexPage = () => {
         remConversion: 16,
         autoConvertSpacing: true,
         autoConvertColor: true,
+        classPrefix:''
     });
     return (
         <div
