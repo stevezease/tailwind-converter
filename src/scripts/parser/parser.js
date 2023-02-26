@@ -30,7 +30,13 @@ export const convertCss = (
             `${TailWindMap[processedProperty][processedValue].substring(1)}`
         );
     } else {
-        errors.push(`${property}: ${value};`);
+        if(TailWindMap[processedProperty] && processedValue.split(' ').length == 1){
+            tailWindStyles.push(
+                `${(TailWindMap[processedProperty][0].split('-')[0]+'-['+processedValue+']').substring(1)}`
+            );
+        }else{
+            errors.push(`${property}: ${value};`);
+        }
     }
 };
 
