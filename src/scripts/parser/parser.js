@@ -30,7 +30,7 @@ export const convertCss = (
             `${TailWindMap[processedProperty][processedValue].substring(1)}`
         );
     } else {
-        if(TailWindMap[processedProperty] && processedValue.split(' ').length == 1){
+        if(TailWindMap[processedProperty] && processedValue.split(' ').length == 1 && (TailWindMap[processedProperty][0] != undefined)){
             tailWindStyles.push(
                 `${(TailWindMap[processedProperty][0].split('-')[0]+'-['+processedValue+']').substring(1)}`
             );
