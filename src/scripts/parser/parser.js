@@ -34,7 +34,28 @@ export const convertCss = (
             tailWindStyles.push(
                 `${(TailWindMap[processedProperty][0].split('-')[0]+'-['+processedValue+']').substring(1)}`
             );
-        }else{
+        }else if(TailWindMap[processedProperty] && processedValue.split(' ').length == 2 && (TailWindMap[processedProperty][0] != undefined)){
+            tailWindStyles.push(
+                `${(TailWindMap[processedProperty][0].split('-')[0]+'y-['+processedValue.split(' ')[0]+']').substring(1)}`
+            );
+            tailWindStyles.push(
+                `${(TailWindMap[processedProperty][0].split('-')[0]+'x-['+processedValue.split(' ')[1]+']').substring(1)}`
+            );
+        }else if(TailWindMap[processedProperty] && processedValue.split(' ').length == 4 && (TailWindMap[processedProperty][0] != undefined)){
+            tailWindStyles.push(
+                `${(TailWindMap[processedProperty][0].split('-')[0]+'t-['+processedValue.split(' ')[0]+']').substring(1)}`
+            );
+            tailWindStyles.push(
+                `${(TailWindMap[processedProperty][0].split('-')[0]+'r-['+processedValue.split(' ')[1]+']').substring(1)}`
+            );
+            tailWindStyles.push(
+                `${(TailWindMap[processedProperty][0].split('-')[0]+'b-['+processedValue.split(' ')[2]+']').substring(1)}`
+            );
+            tailWindStyles.push(
+                `${(TailWindMap[processedProperty][0].split('-')[0]+'l-['+processedValue.split(' ')[3]+']').substring(1)}`
+            );
+        }
+        else{
             errors.push(`${property}: ${value};`);
         }
     }
