@@ -14,6 +14,14 @@ module.exports = {
             },
         },
         `gatsby-transformer-sharp`,
+        {
+            resolve: `gatsby-plugin-google-gtag`,
+            options: {
+              trackingIds: [
+                "G-H96HXS3WCV", // Replace with your Google Analytics tracking ID
+              ],
+            },
+        },
         `gatsby-plugin-sharp`,
         {
             resolve: `gatsby-plugin-manifest`,
