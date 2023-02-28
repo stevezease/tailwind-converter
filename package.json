@@ -11,7 +11,6 @@
     "csslint": "^1.0.5",
     "gatsby": "^2.20.12",
     "gatsby-image": "^2.3.1",
-    "gatsby-plugin-google-analytics": "^5.7.0",
     "gatsby-plugin-google-gtag": "^5.7.0",
     "gatsby-plugin-manifest": "^2.3.3",
     "gatsby-plugin-offline": "^3.1.2",
