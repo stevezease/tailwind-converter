@@ -20,6 +20,10 @@ module.exports = {
               trackingIds: [
                 "G-H96HXS3WCV", // Replace with your Google Analytics tracking ID
               ],
+              pluginConfig: {
+                head: true,
+                sendPageView: true // set send_page_view to true
+              },
             },
         },
         `gatsby-plugin-sharp`,
