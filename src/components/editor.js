@@ -134,6 +134,10 @@ const Editor = ({ setCssTree, setEditorErrors }) => {
                             setEditorErrors,
                             editor.state.lint.marked.length > 0
                         );
+                        typeof window !== "undefined" && window.gtag("event", "conversion_tracking", {
+                            event_category: "data_update",
+                            event_label: "editor_update",
+                        })
                         // setCssTree(parse(value));
                         // setEditorErrors(editor.state.lint.marked.length > 0);
                         // console.log(editor, data, parse(value));
