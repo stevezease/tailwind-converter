@@ -63,6 +63,22 @@ const Settings = ({ settings, setSettings }) => {
                             ></input>
                         </div>
                         <div className="w-full flex justify-between text-sm my-2 items-center">
+                            <label>Prefix</label>
+                            <input
+                                value={settings.classPrefix}
+                                onChange={(event) =>
+                                    handleChange(
+                                        'classPrefix',
+                                        event.target.value
+                                    )
+                                }
+                                className="rounded border border-teal-800 border-solid"
+                                type="text"
+                                id="remConversion"
+                                name="remConversion"
+                            ></input>
+                        </div>
+                        <div className="w-full flex justify-between text-sm my-2 items-center">
                             <label>Auto Convert Margin/Padding</label>
                             <input
                                 value={settings.autoConvertSpacing}
