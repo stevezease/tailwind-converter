@@ -47,17 +47,17 @@ const Settings = ({ settings, setSettings }) => {
                         <div className="w-full flex justify-between text-sm my-2 items-center">
                             <label>Number of px per rem</label>
                             <input
-                                value={settings.remConversion}
+                                value={settings.classPrefix}
                                 onChange={(event) =>
                                     handleChange(
-                                        'remConversion',
+                                        'classPrefix',
                                         event.target.value
                                     )
                                 }
                                 className="rounded border border-teal-800 border-solid"
                                 type="number"
-                                id="remConversion"
-                                name="remConversion"
+                                id="classPrefix"
+                                name="classPrefix"
                                 min="5"
                                 max="300"
                             ></input>
@@ -74,8 +74,8 @@ const Settings = ({ settings, setSettings }) => {
                                 }
                                 className="rounded border border-teal-800 border-solid"
                                 type="text"
-                                id="remConversion"
-                                name="remConversion"
+                                id="classPrefix"
+                                name="classPrefix"
                             ></input>
                         </div>
                         <div className="w-full flex justify-between text-sm my-2 items-center">
