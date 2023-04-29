@@ -5,13 +5,18 @@ import TailwindBlock from './tailwind-block';
 
 const Output = ({ settings, cssTree, editorErrors }) => {
     const parseStyleTree = (styleTree, selector) => {
-        const tailWindStyles = [];
+        let tailWindStyles = [];
         const errors = [];
         const isHover = selector.indexOf(':hover') !== -1;
         for (let i = 0; i < styleTree.length; i++) {
             const property = styleTree[i];
             const value = styleTree[property];
             convertCss(property, value, tailWindStyles, errors, settings);
+        }
+        if(settings.classPrefix !== ''){
+            tailWindStyles = tailWindStyles.map(element => {
+                return settings.classPrefix+'-'+element
+            })
         }
         return [tailWindStyles, errors];
     };
