@@ -5,9 +5,16 @@
 
 import { describe, it, expect } from 'vitest';
 import { splitTopLevel, substituteVars, evaluateCalc } from '../src/core/css-value.mjs';
-import { normalizeValue, declarationKey, stripNoOpLayers, canonicalizeShadow } from '../src/core/normalize.mjs';
+import {
+    normalizeValue,
+    declarationKey,
+    stripNoOpLayers,
+    canonicalizeShadow,
+    canonicalizeColorNotation,
+    canonicalizeFlex,
+} from '../src/core/normalize.mjs';
 import { expandDeclaration } from '../src/core/shorthand.mjs';
-import { parseColor, isColor, nearestPaletteColor, alphaModifier } from '../src/core/color.mjs';
+import { parseColor, isColor, nearestPaletteColor, alphaModifier, withAlpha } from '../src/core/color.mjs';
 import { normalizeAtRuleParams } from '../src/core/convert.mjs';
 
 describe('splitTopLevel', () => {
@@ -164,7 +171,16 @@ describe('colour', () => {
     it('only offers an alpha modifier it can express exactly', () => {
         expect(alphaModifier(0.5)).toBe('50');
         expect(alphaModifier(1)).toBeNull();
-        expect(alphaModifier(0.503)).toBeNull();
+        // Tailwind takes a fractional modifier, so these are exact.
+        expect(alphaModifier(0.503)).toBe('50.3');
+        expect(alphaModifier(0.175)).toBe('17.5');
+        // A percentage that does not terminate has no exact spelling.
+        expect(alphaModifier(1 / 3)).toBeNull();
+    });
+
+    it('applies an alpha to a palette colour', () => {
+        expect(withAlpha('oklch(0.5 0.1 250)', 0.25)).toBe('oklch(0.5 0.1 250 / 0.25)');
+        expect(withAlpha('oklch(0.5 0.1 250)', 1)).toBe('oklch(0.5 0.1 250)');
     });
 });
 
@@ -221,5 +237,52 @@ describe('canonicalizeShadow', () => {
 
     it('leaves none alone', () => {
         expect(canonicalizeShadow('none')).toBe('none');
+    });
+});
+
+describe('canonicalizeColorNotation', () => {
+    it('rewrites legacy comma syntax to the modern form', () => {
+        expect(canonicalizeColorNotation('rgba(0, 0, 0, 0.05)')).toBe('rgb(0 0 0 / 0.05)');
+        expect(canonicalizeColorNotation('rgb(239, 68, 68)')).toBe('rgb(239 68 68)');
+        expect(canonicalizeColorNotation('hsla(210, 40%, 50%, 0.5)')).toBe('hsl(210 40% 50% / 0.5)');
+    });
+
+    it('drops an alpha of 1, which is what omitting it means', () => {
+        expect(canonicalizeColorNotation('rgba(0, 0, 0, 1)')).toBe('rgb(0 0 0)');
+    });
+
+    it('leaves the modern form untouched', () => {
+        expect(canonicalizeColorNotation('rgb(0 0 0 / 0.05)')).toBe('rgb(0 0 0 / 0.05)');
+    });
+
+    it('rewrites every colour in a multi-layer value', () => {
+        expect(canonicalizeColorNotation('0 1px rgba(0,0,0,0.1), 0 2px rgba(0,0,0,0.2)')).toBe(
+            '0 1px rgb(0 0 0 / 0.1), 0 2px rgb(0 0 0 / 0.2)'
+        );
+    });
+
+    it('makes an rgba shadow match the identical rgb one', () => {
+        // A v3 stylesheet's `shadow-2xl` is byte-for-byte v4's, apart from the
+        // colour notation.
+        expect(declarationKey('box-shadow', '0 25px 50px -12px rgba(0,0,0,0.25)')).toBe(
+            declarationKey('box-shadow', '0 25px 50px -12px rgb(0 0 0 / 0.25)')
+        );
+    });
+});
+
+describe('canonicalizeFlex', () => {
+    it('recognises the long spelling of a numeric flex', () => {
+        expect(canonicalizeFlex('1 1 0')).toBe('1');
+        expect(canonicalizeFlex('2 1 0')).toBe('2');
+    });
+
+    it('recognises the keyword spellings', () => {
+        expect(canonicalizeFlex('1 1 auto')).toBe('auto');
+        expect(canonicalizeFlex('0 0 auto')).toBe('none');
+        expect(canonicalizeFlex('0 1 auto')).toBe('0 auto');
+    });
+
+    it('leaves a value with no keyword equivalent alone', () => {
+        expect(canonicalizeFlex('1 0 200px')).toBe('1 0 200px');
     });
 });

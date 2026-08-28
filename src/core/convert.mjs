@@ -194,6 +194,57 @@ function dropInjectedDeclarations(declarations, injected) {
     return remaining;
 }
 
+/**
+ * At-rules that wrap a rule in a condition, and so can be carried by a
+ * variant. `@layer` and `@scope` change where a rule lives rather than when it
+ * applies, and have no variant form.
+ */
+const CONDITIONAL_AT_RULES = new Set(['media', 'supports', 'container']);
+
+/** A single `(min-width: 40rem)` condition and nothing else. */
+const LONE_MIN_WIDTH = /^\(\s*min-width\s*:\s*([^)]+?)\s*\)$/i;
+const CONTAINER_NAME = /^([a-z_][\w-]*)\s+(\(.*\))$/i;
+
+/** Tailwind candidates may not contain spaces; underscores stand in for them. */
+function underscored(text) {
+    return text.replace(/_/g, '\\_').replace(/\s+/g, '_');
+}
+
+/**
+ * Express an at-rule Tailwind has no named variant for.
+ *
+ * Bootstrap's breakpoints are not Tailwind's, so `@media (min-width: 992px)`
+ * matched no variant — and the classes inside it were emitted bare, with a
+ * note saying they now apply unconditionally. That is the one outcome worth
+ * avoiding: a class list that looks right and drops the condition.
+ *
+ * Every conditional at-rule can be written exactly as an arbitrary variant,
+ * so the condition survives. `min-[992px]:` is preferred where it means the
+ * same thing, because it is what a person would write; `max-[…]` is not, since
+ * it compiles to `width < …` and would move the boundary by a pixel.
+ */
+function arbitraryAtRuleVariant(name, params) {
+    if (!CONDITIONAL_AT_RULES.has(name)) return null;
+
+    const text = String(params).trim().replace(/\s+/g, ' ');
+    if (!text) return null;
+
+    if (name === 'media') {
+        const minWidth = LONE_MIN_WIDTH.exec(text);
+        if (minWidth) return `min-[${underscored(minWidth[1])}]`;
+    }
+
+    if (name === 'container') {
+        const named = CONTAINER_NAME.exec(text);
+        const query = named ? named[2] : text;
+        const suffix = named ? `/${named[1]}` : '';
+        const minWidth = LONE_MIN_WIDTH.exec(query);
+        if (minWidth) return `@min-[${underscored(minWidth[1])}]${suffix}`;
+    }
+
+    return `[@${name}_${underscored(text)}]`;
+}
+
 function collectAtRuleVariants(ancestors, variantIndex) {
     const variants = [];
     const unmatched = [];
@@ -201,7 +252,13 @@ function collectAtRuleVariants(ancestors, variantIndex) {
     for (const { name, params } of ancestors) {
         const key = `${name} ${normalizeAtRuleParams(name, params)}`;
         const variant = variantIndex.byAtRule.get(key);
-        if (variant) variants.push(variant.name);
+        if (variant) {
+            variants.push(variant.name);
+            continue;
+        }
+
+        const arbitrary = arbitraryAtRuleVariant(name, params);
+        if (arbitrary) variants.push(arbitrary);
         else unmatched.push(`@${name} ${params}`.trim());
     }
 
@@ -311,6 +368,9 @@ export function convertCss(css, map, userSettings = {}) {
             declarations.push({
                 property: normalizeProperty(node.prop),
                 value: normalizeValue(node.value),
+                // The same value with the author's capitalisation intact, for
+                // the arbitrary-value fallback to print.
+                raw: normalizeValue(node.value, true),
                 important: node.important || hasImportant(node.value),
             });
         }

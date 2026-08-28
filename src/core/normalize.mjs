@@ -44,12 +44,12 @@ function lowercaseOutsideQuotes(value) {
  * Canonicalize numbers: `.5` becomes `0.5`, `1.0` becomes `1`, `+2` becomes
  * `2`, and any zero with a length unit becomes a bare `0`.
  */
-function normalizeNumbers(value) {
+function normalizeNumbers(value, keepZeroUnits = false) {
     return value.replace(NUMBER_TOKEN, (match, lead, number, unit) => {
         const parsed = parseFloat(number);
         if (!Number.isFinite(parsed)) return match;
         const lowerUnit = unit.toLowerCase();
-        if (parsed === 0 && (lowerUnit === '' || ZERO_EQUIVALENT_UNITS.has(lowerUnit))) {
+        if (!keepZeroUnits && parsed === 0 && (lowerUnit === '' || ZERO_EQUIVALENT_UNITS.has(lowerUnit))) {
             return `${lead}0`;
         }
         return `${lead}${formatNumber(parsed)}${lowerUnit}`;
@@ -68,21 +68,28 @@ export function normalizeProperty(property) {
  * Collapses whitespace (including around commas and inside functions),
  * lowercases keywords, normalizes number formatting, and strips the `!important`
  * flag — which is a cascade concern, not part of the value's identity.
+ *
+ * `asWritten` keeps the author's spelling — capitalisation, and the unit on a
+ * zero — for the one caller that needs a value to show rather than to look up.
+ * An arbitrary value reproduces the declaration verbatim, and
+ * `transform-[translatey(-2px)]` — however well CSS tolerates it — is not what
+ * anybody wrote. Matching still runs on the canonical form, so this changes
+ * what is printed and never what is found.
  */
-export function normalizeValue(value) {
+export function normalizeValue(value, asWritten = false) {
     if (value === undefined || value === null) return '';
     let text = String(value).trim().replace(/;+$/, '').trim();
     if (!text) return '';
 
     text = text.replace(/\s*!\s*important\s*$/i, '');
-    text = lowercaseOutsideQuotes(text);
+    if (!asWritten) text = lowercaseOutsideQuotes(text);
 
     // Whitespace: collapse runs, then tighten around structural punctuation.
     text = text.replace(/\s+/g, ' ');
     text = text.replace(/\s*,\s*/g, ', ');
     text = text.replace(/\(\s+/g, '(').replace(/\s+\)/g, ')');
 
-    text = normalizeNumbers(text);
+    text = normalizeNumbers(text, asWritten);
 
     return text.trim();
 }
@@ -136,13 +143,74 @@ export function canonicalizeShadow(value) {
 }
 
 /**
+ * Rewrite legacy comma colour syntax to the modern space-separated form.
+ *
+ * `rgba(0, 0, 0, 0.05)` and `rgb(0 0 0 / 0.05)` are the same colour, and
+ * Tailwind emits only the second. Stylesheets are full of the first — every
+ * shadow copied from a Tailwind v3 project uses it — so without this, values
+ * that are *identical* to a theme value failed to match and fell through to an
+ * arbitrary value.
+ *
+ * Deliberately a syntax rewrite and not a colour-space conversion: converting
+ * to a common space would be lossy at the gamut edges and could collapse two
+ * genuinely different palette colours onto one key. Nothing here changes which
+ * colour a value denotes.
+ */
+const LEGACY_COLOR_FUNCTION = /\b(rgba?|hsla?)\(([^()]*)\)/gi;
+
+export function canonicalizeColorNotation(value) {
+    if (!/\b(rgba?|hsla?)\(/i.test(value)) return value;
+
+    return value.replace(LEGACY_COLOR_FUNCTION, (whole, name, args) => {
+        // Already in the modern form; leave it exactly as it is.
+        if (!args.includes(',')) return whole;
+
+        const parts = args.split(',').map((part) => part.trim());
+        if (parts.length < 3 || parts.length > 4) return whole;
+
+        const base = name.toLowerCase().startsWith('rgb') ? 'rgb' : 'hsl';
+        const [first, second, third, alpha] = parts;
+
+        // An alpha of 1 is the default and is written by omitting it.
+        if (alpha === undefined || alpha === '1') return `${base}(${first} ${second} ${third})`;
+        return `${base}(${first} ${second} ${third} / ${alpha})`;
+    });
+}
+
+/**
+ * The `flex` shorthand has four spellings that CSS defines as equal to a
+ * single keyword, and Tailwind only ships the keyword form.
+ *
+ * `flex: 1 1 0%` is exactly what `flex: 1` means, but only the short spelling
+ * reaches `flex-1`; the long one fell through to `flex-[1_1_0]`.
+ */
+export function canonicalizeFlex(value) {
+    const parts = value.split(' ');
+    if (parts.length !== 3) return value;
+
+    const [grow, shrink, basis] = parts;
+
+    // `<n> 1 0` is the long spelling of `<n>` — the general case, so
+    // `flex: 2 1 0%` reaches `flex-2` and not just `1` reaching `flex-1`.
+    if (shrink === '1' && basis === '0') return grow;
+
+    if (grow === '1' && shrink === '1' && basis === 'auto') return 'auto';
+    if (grow === '0' && shrink === '0' && basis === 'auto') return 'none';
+    // Tailwind spells this one `0 auto`, which is what `flex-initial` emits.
+    if (grow === '0' && shrink === '1' && basis === 'auto') return '0 auto';
+
+    return value;
+}
+
+/**
  * The key both sides of the map agree on. Everything that indexes or looks up
  * a declaration goes through this function and no other.
  */
 export function declarationKey(property, value) {
     const prop = normalizeProperty(property);
-    let normalized = normalizeValue(value);
+    let normalized = canonicalizeColorNotation(normalizeValue(value));
     if (SHADOW_PROPERTY.test(prop)) normalized = canonicalizeShadow(normalized);
+    else if (prop === 'flex') normalized = canonicalizeFlex(normalized);
     return `${prop}:${normalized}`;
 }
 

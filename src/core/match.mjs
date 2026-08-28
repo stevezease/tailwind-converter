@@ -12,7 +12,7 @@
 
 import { declarationKey, normalizeValue, normalizeProperty } from './normalize.mjs';
 import { formatNumber } from './css-value.mjs';
-import { nearestPaletteColor, alphaModifier, isColor } from './color.mjs';
+import { nearestPaletteColor, alphaModifier, withAlpha, isColor } from './color.mjs';
 
 export const DEFAULT_SETTINGS = {
     /** Pixels per rem, used only to offer px<->rem alternatives. */
@@ -56,15 +56,45 @@ const SINGLE_NUMBER = /^([+-]?(?:\d+\.?\d*|\.\d+))([a-z%]*)$/i;
 const LENGTH_TOKEN = /([+-]?(?:\d+\.?\d*|\.\d+))(px|rem)\b/gi;
 
 /**
- * Keyword spellings CSS treats as equal to a computed value. Tailwind only
- * emits the numeric form, so `font-weight: bold` needs translating to reach
- * `font-bold`. This is CSS semantics rather than anything Tailwind exposes, so
- * unlike the rest of the map it is written out here — deliberately short, and
- * limited to cases where the equivalence is exact.
+ * Keyword spellings CSS treats as equal to a value Tailwind does emit.
+ *
+ * `font-weight: bold` has to become `700` to reach `font-bold`, and the box
+ * alignment properties have to become the `flex-*` spellings to reach
+ * `items-start`. This is CSS semantics rather than anything Tailwind exposes,
+ * so unlike the rest of the map it is written out here — deliberately short.
+ *
+ * These are reported as conversions, not exact matches, because `start` and
+ * `flex-start` do part ways inside a reversed flex container. Tailwind has no
+ * utility for the writing-mode spelling at all, so the alternative to offering
+ * `items-start` is an arbitrary property nobody wants.
  */
+const ALIGNMENT_KEYWORDS = { start: 'flex-start', end: 'flex-end' };
+
 const KEYWORD_EQUIVALENTS = {
     'font-weight': { normal: '400', bold: '700' },
+    'align-items': ALIGNMENT_KEYWORDS,
+    'align-self': ALIGNMENT_KEYWORDS,
+    'align-content': ALIGNMENT_KEYWORDS,
+    'justify-content': ALIGNMENT_KEYWORDS,
+    'justify-self': ALIGNMENT_KEYWORDS,
+    'justify-items': ALIGNMENT_KEYWORDS,
 };
+
+/**
+ * The radius everyone writes when they mean "fully round".
+ *
+ * Tailwind's `rounded-full` is `calc(infinity * 1px)`; stylesheets say
+ * `9999px`, `999px` or Bootstrap's `50rem`. They are the same intent and,
+ * on any element smaller than the value, the same rendering — so the pill
+ * shape reaches the utility that names it instead of `rounded-[9999px]`.
+ *
+ * The threshold is high enough that a radius this large cannot be a corner
+ * anyone is measuring: 20rem is 320px, well past the point where a rounded
+ * corner is a rounded corner rather than a pill.
+ */
+const RADIUS_PROPERTY = /(^|-)radius$/;
+const PILL_RADIUS_REM = 20;
+const FULL_RADIUS = 'calc(infinity * 1px)';
 
 /**
  * Tailwind arbitrary values may not contain spaces, which are written as
@@ -90,8 +120,40 @@ function toRem(value, remConversion) {
     return null;
 }
 
+/**
+ * Split a group's declarations into the ones a stylesheet must state and the
+ * vendor-prefixed twins it need not.
+ *
+ * `select-none` emits `-webkit-user-select: none` alongside `user-select:
+ * none`, and requiring both meant the plain, correct spelling matched nothing
+ * and fell through to `[user-select:none]`. A prefixed declaration is only
+ * ever demoted when the same group carries the unprefixed property with the
+ * same value, so a utility that exists *only* to set a prefixed property is
+ * still matched on it.
+ */
+const VENDOR_PREFIX = /^-(?:webkit|moz|ms|o)-/;
+
+function splitVendorPrefixed(declarations) {
+    const required = [];
+    const prefixed = [];
+
+    for (const declaration of declarations) {
+        const [property, value] = declaration;
+        const bare = VENDOR_PREFIX.test(property) ? property.replace(VENDOR_PREFIX, '') : null;
+        const twinned =
+            bare !== null && declarations.some(([other, otherValue]) => other === bare && otherValue === value);
+        (twinned ? prefixed : required).push(declaration);
+    }
+
+    return { required, prefixed };
+}
+
+/** Values Tailwind cannot infer a property from. */
+const UNTYPABLE_VALUE = /\bvar\(/;
+
 export function createMatcher(map, userSettings = {}) {
     const settings = { ...DEFAULT_SETTINGS, ...userSettings };
+    const untypedSafe = new Set(map.untypedSafe || []);
     const remConversion = Number(settings.remConversion) || DEFAULT_SETTINGS.remConversion;
 
     /* --- indexes derived once per matcher --- */
@@ -187,12 +249,22 @@ export function createMatcher(map, userSettings = {}) {
         }
         LENGTH_TOKEN.lastIndex = 0;
 
+        if (RADIUS_PROPERTY.test(property)) {
+            const rem = toRem(value, remConversion);
+            if (rem !== null && rem >= PILL_RADIUS_REM) alternatives.push(FULL_RADIUS);
+        }
+
         // `opacity: 0.5` and `opacity: 50%` are the same declaration; Tailwind
         // emits the percentage form.
         const single = parseSingleNumber(value);
         if (single) {
             if (single.unit === '') alternatives.push(`${formatNumber(single.number * 100)}%`);
             if (single.unit === '%') alternatives.push(formatNumber(single.number / 100));
+
+            // Durations and delays: stylesheets tend to write seconds,
+            // Tailwind emits milliseconds, and `0.2s` is `200ms`.
+            if (single.unit === 's') alternatives.push(`${formatNumber(single.number * 1000)}ms`);
+            if (single.unit === 'ms') alternatives.push(`${formatNumber(single.number / 1000)}s`);
         }
 
         return alternatives.filter((alternative) => alternative && alternative !== value);
@@ -225,14 +297,23 @@ export function createMatcher(map, userSettings = {}) {
         if (!nearest) return null;
 
         const alpha = alphaModifier(nearest.alpha);
-        const utility = `${prefix}-${nearest.name}${alpha ? `/${alpha}` : ''}`;
+
+        // Translucency the modifier cannot spell — `rgb(0 0 0 / 33.33%)` — has
+        // to fall through to an arbitrary value. Emitting the palette name
+        // without a modifier dropped the alpha in silence, which turned
+        // Bootstrap's `rgba(0, 0, 0, 0.175)` hairline into a solid black
+        // border.
+        if (nearest.alpha < 1 && alpha === null) return null;
+
+        const themeValue = withAlpha(map.palette[nearest.name], nearest.alpha);
+        const utility = `${prefix}-${nearest.name}${alpha === null ? '' : `/${alpha}`}`;
         return {
             utility,
             distance: nearest.distance,
             themeName: nearest.name,
-            themeValue: map.palette[nearest.name],
+            themeValue,
             alpha: nearest.alpha,
-            emits: [[property, map.palette[nearest.name]]],
+            emits: [[property, themeValue]],
         };
     }
 
@@ -271,20 +352,37 @@ export function createMatcher(map, userSettings = {}) {
         if (!settings.arbitraryValues) return null;
         const prefix = map.arbitraryPrefixes[property];
         const encoded = toArbitrary(value);
+
+        // Tailwind reads a prefixed arbitrary value's *value* to decide which
+        // property it sets, and a `var()` tells it nothing: `font-[var(--x)]`
+        // is a font-weight, whatever the declaration it came from. The map
+        // records which prefixes survive an untypable value; the rest fall
+        // back to the arbitrary-property form, which names the property and
+        // cannot be misread.
+        const usable = prefix && (!UNTYPABLE_VALUE.test(value) || untypedSafe.has(property));
+
         // The arbitrary-property form works for every property; the prefixed
         // form is preferred only because it is what a person would write.
-        return prefix ? `${prefix}-[${encoded}]` : `[${normalizeProperty(property)}:${encoded}]`;
+        return usable ? `${prefix}-[${encoded}]` : `[${normalizeProperty(property)}:${encoded}]`;
     }
 
     function resolveSingle(declaration) {
         const { property, value } = declaration;
+        // What an arbitrary value prints: the declaration as written, minus
+        // the whitespace and number normalisation. Matching uses `value`.
+        const raw = declaration.raw ?? value;
 
         // Every tier reports `emits`: the declarations the chosen utility
         // actually produces. For an exact match that is the input verbatim;
         // where the tiers approximate, it is what the stylesheet would become,
         // which is exactly what the UI needs to show a side-by-side diff.
         const exact = lookupExact(property, value);
-        if (exact) return { utility: exact, quality: QUALITY.EXACT, emits: [[property, value]] };
+        if (exact)
+            return {
+                utility: exact,
+                quality: QUALITY.EXACT,
+                emits: [[property, value]],
+            };
 
         for (const alternative of alternativeValues(property, value)) {
             const hit = lookupExact(property, alternative);
@@ -336,9 +434,13 @@ export function createMatcher(map, userSettings = {}) {
             };
         }
 
-        const arbitrary = matchArbitrary(property, value);
+        const arbitrary = matchArbitrary(property, raw);
         if (arbitrary) {
-            return { utility: arbitrary, quality: QUALITY.ARBITRARY, emits: [[property, value]] };
+            return {
+                utility: arbitrary,
+                quality: QUALITY.ARBITRARY,
+                emits: [[property, raw]],
+            };
         }
 
         return null;
@@ -355,6 +457,7 @@ export function createMatcher(map, userSettings = {}) {
             index,
             property: normalizeProperty(declaration.property),
             value: normalizeValue(declaration.value),
+            raw: declaration.raw === undefined ? undefined : normalizeValue(declaration.raw, true),
             important: Boolean(declaration.important),
             consumed: false,
         }));
@@ -396,7 +499,9 @@ export function createMatcher(map, userSettings = {}) {
             const claimed = [];
             const usedAlternate = new Set();
 
-            for (const [property, value] of group.declarations) {
+            const { required, prefixed } = splitVendorPrefixed(group.declarations);
+
+            for (const [property, value] of required) {
                 const key = declarationKey(property, value);
                 const entry = (byKey.get(key) || []).find((item) => !item.consumed && !claimed.includes(item));
                 if (!entry) {
@@ -408,13 +513,14 @@ export function createMatcher(map, userSettings = {}) {
                 claimed.push(entry);
             }
 
-            if (claimed.length !== group.declarations.length) continue;
+            if (claimed.length !== required.length) continue;
 
             // Defaults the utility supplies anyway — `border`'s `border-style`,
-            // `text-sm`'s `line-height`. They are not required for the match,
-            // but when the stylesheet does state them they are covered by this
-            // utility and must not be reported separately.
-            for (const [property, value] of group.optional || []) {
+            // `text-sm`'s `line-height` — plus the vendor-prefixed twins above.
+            // They are not required for the match, but when the stylesheet does
+            // state them they are covered by this utility and must not be
+            // reported separately.
+            for (const [property, value] of [...prefixed, ...(group.optional || [])]) {
                 const key = declarationKey(property, value);
                 const entry = (byKey.get(key) || []).find((item) => !item.consumed && !claimed.includes(item));
                 if (entry) claimed.push(entry);

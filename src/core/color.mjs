@@ -9,7 +9,8 @@
  * from "close enough that you probably meant it".
  */
 
-import { converter, parse, formatHex, differenceEuclidean } from 'culori';
+import { converter, parse, formatHex, formatCss, differenceEuclidean } from 'culori';
+import { formatNumber } from './css-value.mjs';
 
 const toOklch = converter('oklch');
 const toRgb = converter('rgb');
@@ -143,19 +144,44 @@ export function nearestPaletteColor(value, palette, tolerance = 0.05) {
 }
 
 /**
- * Tailwind writes fractional alpha as a percentage modifier: `bg-red-500/50`.
+ * Tailwind writes alpha as a percentage modifier: `bg-red-500/50`.
  *
- * Only whole percentages are offered. An alpha of 0.503 would have to be
- * rounded to `/50`, and quietly changing the value is exactly what this
- * converter is built not to do — the caller falls back to an arbitrary value,
- * which reproduces the colour exactly. The epsilon absorbs float noise from
- * parsing `50%`, not genuine precision.
+ * The modifier is not limited to whole percentages — `bg-black/17.5` compiles
+ * — so the only alphas without an exact spelling are the ones whose
+ * percentage does not terminate, such as `1/3`. Those return null, and the
+ * caller falls back to an arbitrary value rather than rounding the colour.
+ *
+ * The epsilon absorbs float noise from parsing (`0.175 * 100` is
+ * `17.500000000000004`), not genuine precision.
  */
 export function alphaModifier(alpha) {
     if (alpha === undefined || alpha === null) return null;
-    if (alpha >= 1) return null;
+    if (!Number.isFinite(alpha) || alpha < 0 || alpha >= 1) return null;
+
     const percent = alpha * 100;
-    const rounded = Math.round(percent);
-    if (Math.abs(percent - rounded) > 1e-6) return null;
-    return String(rounded);
+    const rounded = Math.round(percent * 1000) / 1000;
+    if (Math.abs(percent - rounded) > 1e-9) return null;
+
+    return formatNumber(rounded);
+}
+
+/**
+ * A palette colour with the source declaration's alpha applied.
+ *
+ * `bg-black/50` emits `color-mix(in oklab, var(--color-black) 50%, transparent)`,
+ * which is the palette colour at half alpha. Reporting the bare palette colour
+ * instead made the hover card's side-by-side diff claim a translucent colour
+ * had become opaque.
+ */
+export function withAlpha(color, alpha) {
+    if (alpha === undefined || alpha === null || alpha >= 1) return color;
+
+    const parsed = parse(color);
+    if (!parsed) return color;
+
+    try {
+        return formatCss({ ...parsed, alpha });
+    } catch {
+        return color;
+    }
 }

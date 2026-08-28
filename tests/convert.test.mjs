@@ -160,9 +160,31 @@ describe('variants', () => {
         expect(classesFor('@media (prefers-color-scheme: dark) { .a { display: flex; } }')).toBe('dark:flex');
     });
 
-    it('reports an at-rule it cannot express', () => {
-        const rule = ruleFor('@supports (display: grid) { .a { display: grid; } }');
-        expect(rule.unsupportedAtRules).toEqual(['@supports (display: grid)']);
+    it("writes a breakpoint that is not Tailwind's as an arbitrary variant", () => {
+        // Bootstrap's `lg`. Emitting `grid` bare would look right and silently
+        // drop the condition.
+        expect(classesFor('@media (min-width: 992px) { .a { display: grid; } }')).toBe('min-[992px]:grid');
+    });
+
+    it('keeps a condition it has no named variant for', () => {
+        expect(classesFor('@supports (display: grid) { .a { display: grid; } }')).toBe(
+            '[@supports_(display:_grid)]:grid'
+        );
+        expect(classesFor('@media (max-width: 767px) { .a { display: grid; } }')).toBe(
+            '[@media_(max-width:_767px)]:grid'
+        );
+    });
+
+    it('names the container a container query belongs to', () => {
+        expect(classesFor('@container cards (min-width: 480px) { .a { display: grid; } }')).toBe(
+            '@min-[480px]/cards:grid'
+        );
+    });
+
+    it('reports an at-rule that is not a condition at all', () => {
+        const rule = ruleFor('@layer utilities { .a { display: grid; } }');
+        expect(rule.unsupportedAtRules).toEqual(['@layer utilities']);
+        expect(rule.classes).toEqual(['grid']);
     });
 });
 
@@ -194,7 +216,7 @@ describe('arbitrary-value fallback', () => {
         // Asserting on one it *does* ship (mask-type-alpha, say) would really
         // be testing which release is installed — that failed on 4.0, where
         // the utility does not exist yet and the fallback was correct.
-        expect(classesFor('.a { text-rendering: geometricPrecision; }')).toBe('[text-rendering:geometricprecision]');
+        expect(classesFor('.a { text-rendering: geometricPrecision; }')).toBe('[text-rendering:geometricPrecision]');
     });
 
     it('encodes spaces as underscores', () => {
@@ -351,5 +373,219 @@ describe('rounding to multi-declaration utilities', () => {
     it('does not round to a group that needs more than one declaration', () => {
         // `antialiased` sets two properties; nothing about it is a scale.
         expect(classesFor('.a { -webkit-font-smoothing: antialiased; }')).toContain('antialiased');
+    });
+});
+
+describe('shorthands that used to fall through to arbitrary values', () => {
+    it('splits the outline shorthand, the usual way to write a focus ring', () => {
+        // Was `[outline:2px_solid_#a5b4fc]` — one arbitrary property for a
+        // declaration every one of whose parts has a utility.
+        expect(classesFor('.a { outline: 2px solid #a5b4fc; }')).toBe('outline-2 outline-indigo-300');
+        expect(classesFor('.a { outline: none; }')).toBe('outline-none');
+    });
+
+    it('splits list-style', () => {
+        expect(classesFor('.a { list-style: none; }')).toBe('list-none');
+        expect(classesFor('.a { list-style: disc inside; }')).toBe('list-inside list-disc');
+    });
+
+    it('splits flex-flow onto direction and wrap', () => {
+        expect(classesFor('.a { flex-flow: row wrap; }')).toBe('flex-row flex-wrap');
+        expect(classesFor('.a { flex-flow: column; }')).toBe('flex-col');
+    });
+
+    it('recognises the long spelling of the flex shorthand', () => {
+        // CSS defines `<n> 1 0%` as exactly `<n>`; Tailwind only ships the
+        // short form, so the long one missed it.
+        expect(classesFor('.a { flex: 1 1 0%; }')).toBe('flex-1');
+        expect(classesFor('.a { flex: 2 1 0%; }')).toBe('flex-2');
+        expect(classesFor('.a { flex: 1 1 auto; }')).toBe('flex-auto');
+        expect(classesFor('.a { flex: 0 1 auto; }')).toBe('flex-initial');
+        expect(classesFor('.a { flex: 0 0 auto; }')).toBe('flex-none');
+    });
+
+    it('leaves a flex value with no keyword equivalent alone', () => {
+        expect(classesFor('.a { flex: 1 0 200px; }')).toBe('flex-[1_0_200px]');
+    });
+
+    it('reads seconds where Tailwind emits milliseconds', () => {
+        expect(classesFor('.a { transition-duration: 0.2s; }')).toBe('duration-200');
+        expect(classesFor('.a { transition-delay: 0.3s; }')).toBe('delay-300');
+    });
+});
+
+describe('legacy colour notation', () => {
+    it('matches a v3-era shadow that is identical apart from notation', () => {
+        expect(classesFor('.a { box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05); }')).toBe('shadow-xs');
+        expect(classesFor('.a { box-shadow: 0 25px 50px -12px rgba(0,0,0,0.25); }')).toBe('shadow-2xl');
+    });
+
+    it('reads rgba colours in ordinary properties', () => {
+        expect(classesFor('.a { color: rgba(239,68,68,1); }')).toBe('text-red-500');
+        expect(classesFor('.a { background-color: rgba(0,0,0,0.5); }')).toBe('bg-black/50');
+    });
+
+    it('still refuses a v3 shadow that v4 genuinely changed', () => {
+        // v4 altered the second layer's spread and alpha, so this is a
+        // different shadow, not a different spelling. Keeping it exact is the
+        // right answer.
+        expect(
+            classesFor('.a { box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -2px rgba(0,0,0,0.05); }')
+        ).toContain('shadow-[');
+    });
+});
+
+describe('translucent colours', () => {
+    it('keeps an alpha the modifier can spell', () => {
+        // Bootstrap's hairline. The palette colour matched and the alpha was
+        // dropped in silence, turning a 17.5% border into a solid black one.
+        expect(classesFor('.a { border-color: rgba(0, 0, 0, 0.175); }')).toBe('border-black/17.5');
+        expect(classesFor('.a { background-color: rgba(0, 0, 0, 0.03); }')).toBe('bg-black/3');
+    });
+
+    it('falls back to an arbitrary value when it cannot', () => {
+        // A third of full opacity has no terminating percentage, so the only
+        // exact answer is the value itself.
+        expect(classesFor('.a { background-color: rgb(0 0 0 / 33.333333%); }')).toBe('bg-[rgb(0_0_0_/_33.333333%)]');
+    });
+
+    it('reports the alpha in what the utility emits', () => {
+        const match = ruleFor('.a { color: rgba(0, 0, 0, 0.5); }').matches[0];
+        expect(match.emits[0][1]).toContain('/ 0.5');
+    });
+});
+
+describe('vendor prefixes', () => {
+    it('matches a utility from the unprefixed declaration alone', () => {
+        // `select-none` emits `-webkit-user-select` too, and requiring both
+        // meant the correct spelling fell through to `[user-select:none]`.
+        expect(classesFor('.a { user-select: none; }')).toBe('select-none');
+        expect(classesFor('.a { -webkit-user-select: none; user-select: none; }')).toBe('select-none');
+        expect(classesFor('.a { backdrop-filter: blur(8px); }')).toBe('backdrop-blur-sm');
+    });
+});
+
+describe('legacy spellings', () => {
+    it('reads the aliases every reset stylesheet uses', () => {
+        expect(classesFor('.a { word-wrap: break-word; }')).toBe('wrap-break-word');
+        expect(classesFor('.a { word-break: break-word; }')).toBe('wrap-break-word');
+        expect(classesFor('.a { page-break-after: always; }')).toBe('break-after-page');
+        expect(classesFor('.a { page-break-inside: avoid; }')).toBe('break-inside-avoid');
+    });
+
+    it('emits one utility when a rule states an alias and its modern name', () => {
+        expect(classesFor('.a { overflow-wrap: break-word; word-wrap: break-word; word-break: break-word; }')).toBe(
+            'wrap-break-word'
+        );
+    });
+
+    it('keeps a value the alias does not cover', () => {
+        expect(classesFor('.a { word-break: break-all; }')).toBe('break-all');
+    });
+
+    it('reads the longhands of the columns shorthand', () => {
+        expect(classesFor('.a { column-count: 3; }')).toBe('columns-3');
+        expect(classesFor('.a { column-width: 16rem; }')).toBe('columns-3xs');
+    });
+
+    it('refuses to rewrite either longhand when the rule states both', () => {
+        // `columns` cannot say "three columns of 16rem", so rewriting either
+        // one would emit two utilities fighting over the same property.
+        expect(classesFor('.a { column-count: 3; column-width: 16rem; }')).toBe(
+            '[column-count:3] [column-width:16rem]'
+        );
+    });
+});
+
+describe('values written the long way round', () => {
+    it('collapses a box shorthand that repeats itself', () => {
+        expect(classesFor('.a { padding: 1rem 1rem; }')).toBe('p-4');
+        expect(classesFor('.a { padding: 8px 12px 8px 12px; }')).toBe('px-3 py-2');
+        expect(classesFor('.a { border-radius: 4px 4px 4px 4px; }')).toBe('rounded-sm');
+    });
+
+    it('folds longhands that agree back into one utility', () => {
+        // Bootstrap's `.navbar-brand`, and hand-written CSS generally.
+        expect(classesFor('.a { padding-top: 0.3125rem; padding-bottom: 0.3125rem; }')).toBe('py-1.25');
+        expect(classesFor('.a { margin-left: auto; margin-right: auto; }')).toBe('mx-auto');
+        expect(classesFor('.a { top: 0; right: 0; bottom: 0; left: 0; }')).toBe('inset-0');
+    });
+
+    it('leaves longhands that disagree alone', () => {
+        expect(classesFor('.a { padding-top: 1rem; padding-bottom: 2rem; }')).toBe('pt-4 pb-8');
+        expect(classesFor('.a { overflow-x: hidden; overflow-y: auto; }')).toBe('overflow-x-hidden overflow-y-auto');
+        // One side important and the other not is a difference the cascade
+        // can see.
+        expect(classesFor('.a { padding-top: 1rem; padding-bottom: 1rem !important; }')).toBe('pt-4 pb-4!');
+    });
+
+    it('reads the radius everyone writes for a pill', () => {
+        expect(classesFor('.a { border-radius: 9999px; }')).toBe('rounded-full');
+        expect(classesFor('.a { border-radius: 50rem; }')).toBe('rounded-full');
+        // A radius small enough to be a corner stays exact.
+        expect(classesFor('.a { border-radius: 100px; }')).toBe('rounded-[100px]');
+    });
+
+    it('reads the writing-mode spelling of the alignment keywords', () => {
+        expect(classesFor('.a { align-items: start; }')).toBe('items-start');
+        expect(classesFor('.a { justify-content: end; }')).toBe('justify-end');
+    });
+});
+
+describe('the transition shorthand', () => {
+    it('splits it into the property, duration and easing utilities', () => {
+        // Was one `[transition:…]` arbitrary property — the longest class the
+        // converter can emit, hiding a duration and an easing that both have
+        // utilities.
+        expect(classesFor('.a { transition: opacity 150ms; }')).toBe('transition-opacity');
+        expect(classesFor('.a { transition: all 0.2s linear 0.1s; }')).toBe(
+            'transition-all delay-100 duration-200 ease-linear'
+        );
+        expect(classesFor('.a { transition: none; }')).toBe('transition-none');
+    });
+
+    it('carries every layer of a property list', () => {
+        expect(classesFor('.a { transition: color .15s ease-in-out, background-color .15s ease-in-out; }')).toBe(
+            'transition-[color,_background-color] duration-150 ease-[ease-in-out]'
+        );
+    });
+
+    it('refuses to split layers with different timings', () => {
+        // The longhands cannot say "150ms for opacity, 300ms for transform".
+        expect(classesFor('.a { transition: opacity 150ms, transform 300ms; }')).toBe(
+            '[transition:opacity_150ms,_transform_300ms]'
+        );
+    });
+});
+
+describe('arbitrary values print what was written', () => {
+    it('keeps the capitalisation of a value it could not match', () => {
+        // CSS does not care, but `transform-[translatey(-2px)]` is not what
+        // anybody typed.
+        expect(classesFor('.a { transform: translateY(-2px); }')).toBe('transform-[translateY(-2px)]');
+        expect(classesFor('.a { font-family: ui-monospace, SFMono-Regular, monospace; }')).toBe(
+            'font-[ui-monospace,_SFMono-Regular,_monospace]'
+        );
+    });
+
+    it('keeps the unit on a zero it prints', () => {
+        expect(classesFor('.a { box-shadow: 0px 1px 2px #0001; }')).toContain('shadow-[0px_1px_2px');
+    });
+
+    it('names the property when a prefix would be read as another one', () => {
+        // `font-[var(--x)]` compiles to a *font-weight*: Tailwind picks the
+        // property from the value's shape, and a var() has none.
+        expect(classesFor('.a { font-family: var(--brand-font); }')).toBe('[font-family:var(--brand-font)]');
+        expect(classesFor('.a { border-width: var(--bw); }')).toBe('[border-width:var(--bw)]');
+        // Prefixes that do survive an untypable value keep the short form.
+        expect(classesFor('.a { color: var(--brand); }')).toBe('text-[var(--brand)]');
+        expect(classesFor('.a { width: var(--w); }')).toBe('w-[var(--w)]');
+        // A font stack Tailwind *can* type keeps its prefix.
+        expect(classesFor('.a { font-family: ui-monospace, monospace; }')).toBe('font-[ui-monospace,_monospace]');
+    });
+
+    it('still matches regardless of case', () => {
+        expect(classesFor('.a { COLOR: RED; }')).toBe('text-red-500');
+        expect(classesFor('.a { transform: rotateY(180deg); }')).toBe('rotate-y-180');
     });
 });

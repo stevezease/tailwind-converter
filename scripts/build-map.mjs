@@ -175,6 +175,22 @@ function extractVariants(designSystem, propertyInitials) {
 /** Probes covering the value types utilities accept. */
 const ARBITRARY_SENTINELS = ['10px', '10%', 'red', '1.5'];
 
+/**
+ * A value Tailwind cannot type.
+ *
+ * Several properties share one prefix — `font-family`, `font-weight` and
+ * `font-stretch` all answer to `font-` — and Tailwind picks between them by
+ * looking at the value. A `var()` tells it nothing, so it falls back to one
+ * fixed property per prefix: `font-[var(--x)]` is a *font-weight*, which made
+ * `font-family: var(--bs-btn-font-family)` come back as a class that sets the
+ * wrong property entirely.
+ *
+ * Compiling this probe records which property each prefix falls back to, so
+ * the converter can tell when the prefixed form would be read as something
+ * else and reach for `[font-family:var(--x)]` instead.
+ */
+const UNTYPED_SENTINEL = 'var(--tw-probe)';
+
 function deriveArbitraryPrefixes(designSystem, declarations, groups, propertyInitials) {
     const votes = new Map(); // property -> Map(prefix -> count)
 
@@ -237,7 +253,35 @@ function deriveArbitraryPrefixes(designSystem, declarations, groups, propertyIni
         if (best) prefixes[property] = best.prefix;
     }
 
-    return prefixes;
+    /* Which properties keep their prefix when the value cannot be typed.
+       Read straight from the compiled CSS rather than through
+       extractDeclarations, which rejects anything still holding a `var()` —
+       which is the whole point of the probe. */
+    const untypedSafe = [];
+    for (const property in prefixes) {
+        const candidate = `${prefixes[property]}-[${UNTYPED_SENTINEL}]`;
+        const css = designSystem.candidatesToCss([candidate])[0];
+        if (!css) continue;
+
+        let emitted;
+        try {
+            emitted = postcss.parse(css);
+        } catch {
+            continue;
+        }
+
+        let carriesProbe = false;
+        emitted.walkDecls((decl) => {
+            const name = normalizeProperty(decl.prop);
+            if (name.startsWith('--')) return;
+            if (name === property && decl.value.includes(UNTYPED_SENTINEL)) carriesProbe = true;
+        });
+
+        if (carriesProbe) untypedSafe.push(property);
+    }
+    untypedSafe.sort();
+
+    return { prefixes, untypedSafe };
 }
 
 /* ------------------------------------------------------------------ *
@@ -274,11 +318,19 @@ async function main() {
     const spacingByPrefix = new Map();        // "px" -> Set(properties)
 
     const indexedUtilities = new Set();
-    const propertyUtilities = new Map(); // property -> Set(utility)
 
-    const noteProperty = (property, utility) => {
-        if (!propertyUtilities.has(property)) propertyUtilities.set(property, new Set());
-        propertyUtilities.get(property).add(utility);
+    /* Property -> utilities that set it, split by whether the utility is
+       *about* that property. `sr-only` sets padding, margin, width and a
+       border-width, and sorts near the front of Tailwind's order; ranking
+       those properties by it put `p-4` ahead of `flex`. A composite utility
+       only speaks for a property no dedicated utility covers. */
+    const propertyUtilities = new Map(); // property -> Set(utility)
+    const compositeUtilities = new Map();
+
+    const noteProperty = (property, utility, dedicated) => {
+        const table = dedicated ? propertyUtilities : compositeUtilities;
+        if (!table.has(property)) table.set(property, new Set());
+        table.get(property).add(utility);
     };
 
     let indexed = 0;
@@ -367,14 +419,17 @@ async function main() {
             groups.push(entry);
         }
         indexedUtilities.add(utility);
-        for (const decl of resolved) noteProperty(decl.property, utility);
+        // Only the declarations the utility is *about*. A utility that merely
+        // implies a property — every `transition-*` carries a default duration
+        // — must not lend it that utility's rank, or `duration-*` sorts ahead
+        // of the `transition-*` class it belongs to.
+        for (const decl of required) noteProperty(decl.property, utility, required.length === 1);
         indexed++;
     }
 
     // Largest groups first: matching `text-sm` (font-size + line-height) must
     // be attempted before any single-declaration fallback claims the font-size.
     groups.sort((a, b) => b.declarations.length - a.declarations.length || a.utility.localeCompare(b.utility));
-
 
     /* Canonical ordering. `getClassOrder` is Tailwind's own sort — the one the
        Prettier plugin uses — but it ranks utilities, and at runtime the
@@ -388,13 +443,24 @@ async function main() {
             const rank = ranked.get(utility);
             return rank === null || rank === undefined ? null : Number(rank);
         };
-        for (const [property, utilities] of propertyUtilities) {
-            let best = null;
+        for (const [property, utilities] of [...compositeUtilities, ...propertyUtilities]) {
+            const ranks = [];
             for (const utility of utilities) {
                 const rank = rankOf(utility);
-                if (rank !== null && (best === null || rank < best)) best = rank;
+                if (rank !== null) ranks.push(rank);
             }
-            if (best !== null) propertyOrder[property] = best;
+            if (ranks.length === 0) continue;
+
+            // The median, not the minimum: `container` is the very first class
+            // in Tailwind's order and it sets a width, which is enough to drag
+            // every `w-*` ahead of `flex` if one stray utility can speak for
+            // the whole property. Utilities that set a property cluster
+            // together in the order, so the middle of the cluster is where the
+            // property belongs.
+            ranks.sort((a, b) => a - b);
+            // Dedicated utilities come second in the iteration above, so they
+            // overwrite whatever rank a composite utility supplied.
+            propertyOrder[property] = ranks[Math.floor(ranks.length / 2)];
         }
         // Compact the ranks to small integers; only their order matters.
         const sorted = Object.keys(propertyOrder).sort((a, b) => propertyOrder[a] - propertyOrder[b]);
@@ -404,7 +470,12 @@ async function main() {
     }
 
     const variants = extractVariants(designSystem, propertyInitials);
-    const arbitraryPrefixes = deriveArbitraryPrefixes(designSystem, declarations, groups, propertyInitials);
+    const { prefixes: arbitraryPrefixes, untypedSafe } = deriveArbitraryPrefixes(
+        designSystem,
+        declarations,
+        groups,
+        propertyInitials
+    );
 
     const spacing = Object.create(null);
     for (const [prefix, properties] of [...spacingByPrefix].sort()) {
@@ -445,6 +516,9 @@ async function main() {
         spacing,
         variants,
         arbitraryPrefixes,
+        // Properties whose prefix still means them when the value is a bare
+        // `var()`; the rest must use the arbitrary-property form.
+        untypedSafe,
         propertyOrder,
         declarations,
         groups,
