@@ -172,10 +172,19 @@ describe('arbitrary-value fallback', () => {
     });
 
     it('prefers an exact spacing step over an arbitrary value', () => {
-        // 13px is 3.25 spacing steps, and v4 accepts quarter steps, so this is
-        // exact rather than arbitrary — `p-13` would be valid too even though
-        // neither appears in Tailwind's enumerated class list.
+        // 13px is 3.25 spacing steps, and v4 accepts quarter steps, so this
+        // lands on the scale rather than falling back — `p-13` would be valid
+        // too, though neither appears in Tailwind's enumerated class list.
         const rule = ruleFor('.a { width: 13px; }');
+        expect(rule.classNames).toBe('w-3.25');
+        // Labelled `converted` because the unit changed, exactly as
+        // `padding: 16px` -> `p-4` is. No value was lost either way.
+        expect(rule.matches[0].quality).toBe(QUALITY.CONVERTED);
+        expect(rule.matches[0].emits).toEqual([['width', '0.8125rem']]);
+    });
+
+    it('reports a spacing step written in rem as exact', () => {
+        const rule = ruleFor('.a { width: 0.8125rem; }');
         expect(rule.classNames).toBe('w-3.25');
         expect(rule.matches[0].quality).toBe(QUALITY.EXACT);
     });
@@ -193,21 +202,45 @@ describe('arbitrary-value fallback', () => {
     });
 
     it('reports declarations as unconverted when the fallback is disabled', () => {
-        const rule = ruleFor('.a { border-radius: 7px; }', { arbitraryValues: false });
+        // 40px is too far from any radius on the scale to snap, so with the
+        // fallback off there is nothing left to emit.
+        const rule = ruleFor('.a { border-radius: 40px; }', { arbitraryValues: false });
         expect(rule.classNames).toBe('');
-        expect(rule.unconverted).toEqual([{ property: 'border-radius', value: '7px' }]);
+        expect(rule.unconverted).toEqual([{ property: 'border-radius', value: '40px' }]);
     });
 });
 
 describe('rounding', () => {
-    it('is off by default, so nothing is silently changed', () => {
-        expect(classesFor('.a { border-radius: 7px; }')).toBe('rounded-[7px]');
+    it('prefers a theme value over an arbitrary one when the gap is small', () => {
+        // A class on the scale teaches the scale; `rounded-[10px]` teaches
+        // only the escape hatch. Nothing is hidden by this: the class is
+        // underlined and the hover card shows both numbers.
+        expect(classesFor('.a { border-radius: 10px; }')).toBe('rounded-lg');
+        expect(ruleFor('.a { border-radius: 10px; }').matches[0].note).toMatch(/rounded to 8px/);
     });
 
-    it('snaps to the nearest theme value when enabled, and says so', () => {
-        const rule = ruleFor('.a { border-radius: 7px; }', { roundToScale: true });
-        expect(rule.matches[0].quality).toBe(QUALITY.ROUNDED);
-        expect(rule.matches[0].note).toMatch(/rounded to/);
+    it('accepts a small pixel gap that a relative threshold alone would reject', () => {
+        // 10px -> 8px is 20%, past the relative tolerance, but only 2px.
+        const rule = ruleFor('.a { border-radius: 10px; }');
+        expect(rule.matches[0].error).toBeGreaterThan(0.15);
+        expect(rule.matches[0].offByPx).toBe(2);
+    });
+
+    it('refuses a gap that is large in both senses', () => {
+        // 40px is 8px from the nearest radius and 20% off; snapping would be a
+        // design change, not a translation.
+        expect(classesFor('.a { border-radius: 40px; }')).toBe('rounded-[40px]');
+    });
+
+    it('can be turned off for a strict, value-preserving pass', () => {
+        expect(classesFor('.a { border-radius: 10px; }', { roundToScale: false })).toBe(
+            'rounded-[10px]'
+        );
+    });
+
+    it('never rounds when an exact match exists', () => {
+        expect(classesFor('.a { border-radius: 0.5rem; }')).toBe('rounded-lg');
+        expect(ruleFor('.a { border-radius: 0.5rem; }').matches[0].quality).toBe(QUALITY.EXACT);
     });
 });
 
@@ -237,5 +270,86 @@ describe('resilience', () => {
         const rule = ruleFor('.a, .b { display: flex; }');
         expect(rule.selectors).toEqual(['.a', '.b']);
         expect(rule.classNames).toBe('flex');
+    });
+});
+
+describe('what a class list cannot express', () => {
+    it('warns when a descendant selector loses its context', () => {
+        // The classes go on `.item`; applying them without the `.menu`
+        // ancestor is a different rule. Emitting them silently was worse than
+        // emitting nothing, because the output looks correct.
+        const rule = ruleFor('.menu .item { color: #ef4444; }');
+        expect(rule.classNames).toBe('text-red-500');
+        expect(rule.selectorWarnings).toHaveLength(1);
+        expect(rule.selectorWarnings[0]).toContain('`.item`');
+        expect(rule.selectorWarnings[0]).toContain('group-*');
+    });
+
+    it('warns about a child combinator too', () => {
+        expect(ruleFor('.a > .b { display: flex; }').selectorWarnings).toHaveLength(1);
+    });
+
+    it('warns when a condition on the element has no variant', () => {
+        const rule = ruleFor('.btn:not(.disabled) { display: flex; }');
+        expect(rule.selectorWarnings[0]).toContain(':not(.disabled)');
+        expect(rule.selectorWarnings[0]).toContain('unconditionally');
+    });
+
+    it('warns about an attribute selector', () => {
+        expect(ruleFor('[data-open] { display: block; }').selectorWarnings[0]).toContain('[data-open]');
+    });
+
+    it('says nothing about selectors utilities can express', () => {
+        for (const selector of ['.card', '.a.b', 'div', '#main', '.card:hover']) {
+            expect(ruleFor(`${selector} { display: flex; }`).selectorWarnings).toEqual([]);
+        }
+    });
+});
+
+describe('pseudo-element content', () => {
+    it('keeps a real content value instead of swallowing it', () => {
+        // The `after:` variant emits `content: var(--tw-content)`, which used
+        // to consume the source declaration and lose the value entirely.
+        const rule = ruleFor('.a::after { content: "→"; color: #ef4444; }');
+        expect(rule.classNames).toContain('after:content-["→"]');
+        expect(rule.unconverted).toEqual([]);
+    });
+
+    it('still drops a content declaration that only restates the default', () => {
+        const rule = ruleFor('.a::before { content: ""; display: block; }');
+        expect(rule.classNames).toBe('before:block');
+    });
+});
+
+describe('rounding to multi-declaration utilities', () => {
+    it('snaps a font size the same way it snaps a radius', () => {
+        // Every text size is a group (font-size + line-height), so without
+        // groups on the scale `font-size: 13px` could not reach `text-xs`
+        // while `border-radius: 13px` reached `rounded-xl` — the same 1px gap
+        // treated two different ways.
+        expect(classesFor('.a { font-size: 15px; }')).toBe('text-sm');
+        expect(classesFor('.a { border-radius: 13px; }')).toBe('rounded-xl');
+    });
+
+    it('reports the declaration the utility brings with it', () => {
+        const rule = ruleFor('.a { font-size: 15px; }');
+        expect(rule.matches[0].quality).toBe(QUALITY.ROUNDED);
+        // The line-height must stay visible in `emits` so the hover card can
+        // show it rather than the rounding hiding it.
+        expect(rule.matches[0].emits).toEqual([
+            ['font-size', '0.875rem'],
+            ['line-height', '1.428571'],
+        ]);
+    });
+
+    it('still refuses a font size that is genuinely far off', () => {
+        const rule = ruleFor('.a { font-size: 40px; }');
+        expect(rule.matches[0].offByPx).toBeGreaterThanOrEqual(2);
+        expect(rule.matches[0].error).toBeGreaterThanOrEqual(0.1);
+    });
+
+    it('does not round to a group that needs more than one declaration', () => {
+        // `antialiased` sets two properties; nothing about it is a scale.
+        expect(classesFor('.a { -webkit-font-smoothing: antialiased; }')).toContain('antialiased');
     });
 });

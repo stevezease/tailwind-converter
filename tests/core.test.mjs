@@ -5,7 +5,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { splitTopLevel, substituteVars, evaluateCalc } from '../src/core/css-value.mjs';
-import { normalizeValue, declarationKey, stripNoOpLayers } from '../src/core/normalize.mjs';
+import { normalizeValue, declarationKey, stripNoOpLayers, canonicalizeShadow } from '../src/core/normalize.mjs';
 import { expandDeclaration } from '../src/core/shorthand.mjs';
 import { parseColor, isColor, nearestPaletteColor, alphaModifier } from '../src/core/color.mjs';
 import { normalizeAtRuleParams } from '../src/core/convert.mjs';
@@ -184,5 +184,42 @@ describe('normalizeAtRuleParams', () => {
 
     it('leaves non-media at-rules untouched apart from whitespace', () => {
         expect(normalizeAtRuleParams('supports', '(display:  grid)')).toBe('(display: grid)');
+    });
+});
+
+describe('canonicalizeShadow', () => {
+    it('pads an omitted spread so both spellings agree', () => {
+        // CSS lets blur and spread be dropped. Tailwind always emits four
+        // lengths, so without this a stylesheet using the short form missed
+        // the utility entirely and fell through to an arbitrary value.
+        expect(declarationKey('box-shadow', '0 1px 2px rgb(0 0 0 / 0.05)')).toBe(
+            declarationKey('box-shadow', '0 1px 2px 0 rgb(0 0 0 / 0.05)')
+        );
+    });
+
+    it('pads an omitted blur as well', () => {
+        expect(declarationKey('box-shadow', '0 1px red')).toBe(
+            declarationKey('box-shadow', '0 1px 0 0 red')
+        );
+    });
+
+    it('keeps the inset keyword in front of the lengths', () => {
+        expect(canonicalizeShadow('inset 0 2px 4px red')).toBe('inset 0 2px 4px 0 red');
+    });
+
+    it('handles every layer of a stack independently', () => {
+        expect(canonicalizeShadow('0 1px 2px red, 0 4px 6px -1px blue')).toBe(
+            '0 1px 2px 0 red, 0 4px 6px -1px blue'
+        );
+    });
+
+    it('does not disturb a colour function containing spaces', () => {
+        expect(canonicalizeShadow('0 1px 2px rgb(0 0 0 / 0.05)')).toBe(
+            '0 1px 2px 0 rgb(0 0 0 / 0.05)'
+        );
+    });
+
+    it('leaves none alone', () => {
+        expect(canonicalizeShadow('none')).toBe('none');
     });
 });

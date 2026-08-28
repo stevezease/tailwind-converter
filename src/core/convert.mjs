@@ -88,9 +88,90 @@ function splitSelector(selector, variantIndex) {
 }
 
 /**
+ * What a selector asks for that utility classes cannot express.
+ *
+ * Utilities go on one element. A selector that also describes *which* element —
+ * an ancestor, a sibling, an attribute, a `:not()` — carries a condition that
+ * survives nowhere in the class list. The converter used to emit the classes
+ * anyway with nothing said, so `.menu .item { color: red }` came back as
+ * `text-red-500`: correct-looking, and wrong the moment you put it on `.item`.
+ *
+ * These are reported rather than fixed. Tailwind can express some of them
+ * (`group-*`, `peer-*`, arbitrary variants), but which one is right depends on
+ * markup the converter cannot see.
+ */
+function splitOnCombinators(selector) {
+    const parts = [];
+    let depth = 0;
+    let current = '';
+
+    for (let i = 0; i < selector.length; i++) {
+        const char = selector[i];
+        if (char === '[' || char === '(') depth++;
+        else if (char === ']' || char === ')') depth--;
+
+        if (depth === 0 && (char === '>' || char === '+' || char === '~' || /\s/.test(char))) {
+            if (current.trim()) parts.push(current.trim());
+            current = '';
+            continue;
+        }
+        current += char;
+    }
+    if (current.trim()) parts.push(current.trim());
+    return parts;
+}
+
+/** Conditions inside one compound selector, e.g. `[data-open]` or `:not(.x)`. */
+function conditionsIn(compound) {
+    const found = [];
+    let depth = 0;
+    let current = '';
+
+    const flush = () => {
+        if (current && (current[0] === '[' || current[0] === ':')) found.push(current);
+        current = '';
+    };
+
+    for (let i = 0; i < compound.length; i++) {
+        const char = compound[i];
+        if (depth === 0 && (char === '[' || char === ':') && current) flush();
+        if (char === '[' || char === '(') depth++;
+        else if (char === ']' || char === ')') depth--;
+        current += char;
+    }
+    flush();
+    return found;
+}
+
+export function analyzeSelector(baseSelector) {
+    const warnings = [];
+    const selector = baseSelector.trim();
+    if (!selector) return warnings;
+
+    const parts = splitOnCombinators(selector);
+    if (parts.length > 1) {
+        warnings.push(
+            `These classes go on \`${parts[parts.length - 1]}\`. The rest of \`${selector}\` describes where that element sits, which utility classes cannot express — look at \`group-*\` or \`peer-*\` for that.`
+        );
+    }
+
+    const conditions = conditionsIn(parts[parts.length - 1] ?? selector);
+    if (conditions.length > 0) {
+        warnings.push(
+            `\`${conditions.join('')}\` decides *when* the rule applies and has no variant here, so these classes will apply unconditionally.`
+        );
+    }
+
+    return warnings;
+}
+
+/**
  * Declarations a variant contributes on its own — `::before` implies
  * `content` — are consumed rather than reported as unconverted.
  */
+/** Values that add nothing over what the variant already supplies. */
+const EMPTY_CONTENT = new Set(['""', "''", 'none', '']);
+
 function dropInjectedDeclarations(declarations, injected) {
     if (injected.length === 0) return declarations;
 
@@ -99,7 +180,12 @@ function dropInjectedDeclarations(declarations, injected) {
 
     for (const declaration of declarations) {
         const position = pending.indexOf(declaration.property);
-        if (position !== -1) {
+
+        // Only drop it when the stylesheet is restating the variant's own
+        // default. `::after { content: "" }` is redundant with `after:`, but
+        // `content: "→"` is the point of the rule and has its own utility —
+        // swallowing it lost the value silently.
+        if (position !== -1 && EMPTY_CONTENT.has(declaration.value)) {
             pending.splice(position, 1);
             continue;
         }
@@ -251,9 +337,16 @@ export function convertCss(css, map, userSettings = {}) {
             baseSelector: split.baseSelector,
             variants: [...atRuleResult.variants, ...split.variants],
             unsupportedAtRules: atRuleResult.unmatched,
+            selectorWarnings: analyzeSelector(split.baseSelector),
             classes,
             classNames: classes.join(' '),
             matches: matches.map((item, index) => ({ ...item, className: classes[index] })),
+            // The post-shorthand-expansion declarations each match was made
+            // from. `match.sources` indexes into this, which is what
+            // explainMatch() needs to diff source against emitted output.
+            // Exposed rather than pre-explained so conversion stays cheap; the
+            // UI explains only what the reader actually hovers.
+            declarations: expanded,
             unconverted,
         });
     });

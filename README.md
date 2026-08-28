@@ -84,5 +84,5 @@ produces no diff.
 | Pixels per rem | 16 | Only affects px↔rem equivalence, never media queries, where rem is always 16px by spec |
 | Colour tolerance | 0.05 | Max OKLab distance still treated as the same colour |
 | Arbitrary values | on | Off restores the old strict behaviour, useful for auditing how close a stylesheet already is to the theme |
-| Round to theme scale | off | On snaps near misses and reports the delta |
+| Round to theme scale | on | Snaps a value to the nearest theme value when the gap is under 15% **or** under 2px, whichever is more permissive. Reports the shift, and flags it when the change is both ≥2px and ≥10%. Turn off for a strictly value-preserving pass |
 | Tailwind class order | on | Approximates the official Prettier plugin's ordering |

@@ -92,12 +92,58 @@ export function hasImportant(value) {
     return /!\s*important\s*;?\s*$/i.test(String(value));
 }
 
+/** Properties that take the `<offsets> <blur>? <spread>? <color>?` shadow syntax. */
+const SHADOW_PROPERTY = /(^|-)shadow$/;
+
+const LENGTH_TOKEN_ONLY = /^-?(?:\d+\.?\d*|\.\d+)([a-z%]*)$/i;
+
+/**
+ * Canonicalize the length list in a shadow.
+ *
+ * CSS lets blur and spread be omitted, so `0 1px 2px rgb(0 0 0 / 0.05)` and
+ * `0 1px 2px 0 rgb(0 0 0 / 0.05)` are the same shadow — but only the second
+ * spelling is what Tailwind emits, so a stylesheet using the shorter form
+ * missed `shadow-xs` entirely and fell through to an arbitrary value.
+ *
+ * Padding both sides to four lengths makes the two spellings agree. Colour
+ * functions survive because the split respects parentheses.
+ */
+export function canonicalizeShadow(value) {
+    if (value === 'none' || !value) return value;
+
+    return splitTopLevel(value, ',')
+        .map((layer) => {
+            const tokens = splitTopLevel(layer, ' ').filter(Boolean);
+            if (tokens.length === 0) return layer;
+
+            const inset = [];
+            const lengths = [];
+            const rest = [];
+
+            for (const token of tokens) {
+                if (token === 'inset' && lengths.length === 0) inset.push(token);
+                else if (rest.length === 0 && LENGTH_TOKEN_ONLY.test(token)) lengths.push(token);
+                else rest.push(token);
+            }
+
+            // Fewer than two lengths is not a shadow we understand; leave it be.
+            if (lengths.length < 2 || lengths.length > 4) return layer;
+            while (lengths.length < 4) lengths.push('0');
+
+            return [...inset, ...lengths, ...rest].join(' ');
+        })
+        .join(', ');
+}
+
 /**
  * The key both sides of the map agree on. Everything that indexes or looks up
  * a declaration goes through this function and no other.
  */
 export function declarationKey(property, value) {
-    return `${normalizeProperty(property)}:${normalizeValue(value)}`;
+    const prop = normalizeProperty(property);
+    let normalized = normalizeValue(value);
+    if (SHADOW_PROPERTY.test(prop)) normalized = canonicalizeShadow(normalized);
+    return `${prop}:${normalized}`;
 }
 
 /**

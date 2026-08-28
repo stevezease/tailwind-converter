@@ -72,7 +72,8 @@ const Settings = ({ settings, onChange, open, onToggle }) => {
                         <span className="text-slate-600">
                             Round to theme scale
                             <span className="block text-xs text-slate-400">
-                                Snap near misses, and say so
+                                Prefer a theme value over an arbitrary one when the gap is small.
+                                Turn off to preserve every value exactly.
                             </span>
                         </span>
                         <input

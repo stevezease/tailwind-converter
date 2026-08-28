@@ -21,10 +21,26 @@ export const DEFAULT_SETTINGS = {
     colorTolerance: 0.05,
     /** Emit `w-[13px]` instead of giving up. */
     arbitraryValues: true,
-    /** Allow snapping to the nearest theme value when nothing matches exactly. */
-    roundToScale: false,
-    /** Max relative error tolerated when rounding, e.g. 0.15 = 15%. */
+    /**
+     * Snap to the nearest theme value when nothing matches exactly.
+     *
+     * On by default. A snapped value is never silent: it is underlined, the
+     * hover card shows both numbers and the size of the change, and anything
+     * that moves a length by more than a few percent is flagged for review. A
+     * class on the theme scale teaches the scale; `rounded-[10px]` teaches
+     * only the escape hatch.
+     */
+    roundToScale: true,
+
+    /**
+     * How far a value may be from a theme value and still snap to it.
+     *
+     * Two limits, either of which is enough, because relative error alone
+     * misjudges both ends of the scale: 2px off a 10px radius is invisible but
+     * is 20% of it, while 15% of a 100px radius is 15px and plainly wrong.
+     */
     scaleTolerance: 0.15,
+    absoluteTolerancePx: 2,
 };
 
 /** How much to trust a result, best first. Surfaced in the UI. */
@@ -103,19 +119,40 @@ export function createMatcher(map, userSettings = {}) {
     }
     const spacingStep = toRem(map.spacingBase, remConversion);
 
-    // Numeric candidates per property, for the optional rounding tier.
+    // Numeric candidates per property, for the rounding tier.
     let numericScales = null;
     function scaleFor(property) {
         if (numericScales === null) {
             numericScales = new Map();
+
+            const add = (prop, rem, utility, emits) => {
+                if (rem === null) return;
+                if (!numericScales.has(prop)) numericScales.set(prop, []);
+                numericScales.get(prop).push({ rem, utility, emits });
+            };
+
             for (const key in map.declarations) {
                 const separator = key.indexOf(':');
                 const prop = key.slice(0, separator);
-                const rem = toRem(key.slice(separator + 1), remConversion);
-                if (rem === null) continue;
-                if (!numericScales.has(prop)) numericScales.set(prop, []);
-                numericScales.get(prop).push({ rem, utility: map.declarations[key] });
+                const value = key.slice(separator + 1);
+                add(prop, toRem(value, remConversion), map.declarations[key], [[prop, value]]);
             }
+
+            /* Groups with a single required declaration belong on the scale
+               too. Every text size is one — `text-sm` sets a font-size and
+               brings a line-height with it — so without this, `font-size: 13px`
+               could not reach `text-sm` while `border-radius: 13px` happily
+               reached `rounded-xl`. The line-height comes along either way,
+               and the card reports it under "Also sets". */
+            for (const group of map.groups) {
+                if (group.declarations.length !== 1) continue;
+                const [prop, value] = group.declarations[0];
+                add(prop, toRem(value, remConversion), group.utility, [
+                    ...group.declarations,
+                    ...(group.optional || []),
+                ]);
+            }
+
             for (const list of numericScales.values()) list.sort((a, b) => a.rem - b.rem);
         }
         return numericScales.get(property) || null;
@@ -173,7 +210,11 @@ export function createMatcher(map, userSettings = {}) {
         if (Math.abs(steps - rounded) > 1e-6 || rounded === 0) return null;
 
         const magnitude = formatNumber(Math.abs(rounded));
-        return rounded < 0 ? `-${prefix}-${magnitude}` : `${prefix}-${magnitude}`;
+        return {
+            utility: rounded < 0 ? `-${prefix}-${magnitude}` : `${prefix}-${magnitude}`,
+            emits: [[property, normalizeValue(`${formatNumber(rounded * spacingStep)}rem`)]],
+            steps: rounded,
+        };
     }
 
     function matchColor(property, value) {
@@ -185,7 +226,14 @@ export function createMatcher(map, userSettings = {}) {
 
         const alpha = alphaModifier(nearest.alpha);
         const utility = `${prefix}-${nearest.name}${alpha ? `/${alpha}` : ''}`;
-        return { utility, distance: nearest.distance };
+        return {
+            utility,
+            distance: nearest.distance,
+            themeName: nearest.name,
+            themeValue: map.palette[nearest.name],
+            alpha: nearest.alpha,
+            emits: [[property, map.palette[nearest.name]]],
+        };
     }
 
     function matchRounded(property, value) {
@@ -201,11 +249,21 @@ export function createMatcher(map, userSettings = {}) {
             const error = Math.abs(entry.rem - rem) / Math.abs(rem);
             if (!best || error < best.error) best = { ...entry, error };
         }
-        if (!best || best.error > settings.scaleTolerance) return null;
+        if (!best) return null;
+
+        const offByPx = Math.abs(best.rem - rem) * remConversion;
+        const withinRelative = best.error <= settings.scaleTolerance;
+        const withinAbsolute = offByPx <= (settings.absoluteTolerancePx ?? DEFAULT_SETTINGS.absoluteTolerancePx);
+        if (!withinRelative && !withinAbsolute) return null;
 
         return {
             utility: best.utility,
             note: `${value} rounded to ${formatNumber(best.rem * remConversion)}px`,
+            // The chosen utility's own declarations, so a group's extra
+            // declaration is reported rather than hidden by the rounding.
+            emits: best.emits,
+            error: best.error,
+            offByPx,
         };
     }
 
@@ -221,8 +279,12 @@ export function createMatcher(map, userSettings = {}) {
     function resolveSingle(declaration) {
         const { property, value } = declaration;
 
+        // Every tier reports `emits`: the declarations the chosen utility
+        // actually produces. For an exact match that is the input verbatim;
+        // where the tiers approximate, it is what the stylesheet would become,
+        // which is exactly what the UI needs to show a side-by-side diff.
         const exact = lookupExact(property, value);
-        if (exact) return { utility: exact, quality: QUALITY.EXACT };
+        if (exact) return { utility: exact, quality: QUALITY.EXACT, emits: [[property, value]] };
 
         for (const alternative of alternativeValues(property, value)) {
             const hit = lookupExact(property, alternative);
@@ -231,28 +293,53 @@ export function createMatcher(map, userSettings = {}) {
                     utility: hit,
                     quality: QUALITY.CONVERTED,
                     note: `${value} = ${alternative}`,
+                    emits: [[property, alternative]],
                 };
             }
         }
 
         const spacing = matchSpacing(property, value);
-        if (spacing) return { utility: spacing, quality: QUALITY.EXACT };
+        if (spacing) {
+            return {
+                utility: spacing.utility,
+                quality: spacing.emits[0][1] === value ? QUALITY.EXACT : QUALITY.CONVERTED,
+                note: spacing.emits[0][1] === value ? undefined : `${value} = ${spacing.emits[0][1]}`,
+                emits: spacing.emits,
+                steps: spacing.steps,
+            };
+        }
 
         const color = matchColor(property, value);
         if (color) {
+            const isExact = color.distance < 1e-6;
             return {
                 utility: color.utility,
-                quality: color.distance < 1e-6 ? QUALITY.EXACT : QUALITY.NEAREST_COLOR,
-                note: color.distance < 1e-6 ? undefined : `nearest palette color to ${value}`,
+                quality: isExact ? QUALITY.EXACT : QUALITY.NEAREST_COLOR,
+                note: isExact ? undefined : `nearest palette color to ${value}`,
                 distance: color.distance,
+                themeName: color.themeName,
+                themeValue: color.themeValue,
+                alpha: color.alpha,
+                emits: color.emits,
             };
         }
 
         const rounded = matchRounded(property, value);
-        if (rounded) return { utility: rounded.utility, quality: QUALITY.ROUNDED, note: rounded.note };
+        if (rounded) {
+            return {
+                utility: rounded.utility,
+                quality: QUALITY.ROUNDED,
+                note: rounded.note,
+                emits: rounded.emits,
+                error: rounded.error,
+                offByPx: rounded.offByPx,
+            };
+        }
 
         const arbitrary = matchArbitrary(property, value);
-        if (arbitrary) return { utility: arbitrary, quality: QUALITY.ARBITRARY };
+        if (arbitrary) {
+            return { utility: arbitrary, quality: QUALITY.ARBITRARY, emits: [[property, value]] };
+        }
 
         return null;
     }
@@ -338,6 +425,7 @@ export function createMatcher(map, userSettings = {}) {
             matches.push({
                 utility: group.utility,
                 quality: viaAlternate ? QUALITY.CONVERTED : QUALITY.EXACT,
+                emits: [...group.declarations, ...(group.optional || [])],
                 sources: claimed.map((entry) => entry.index),
                 important: claimed.some((entry) => entry.important),
             });

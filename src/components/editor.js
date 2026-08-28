@@ -3,29 +3,6 @@ import CodeMirror from '@uiw/react-codemirror';
 import { css as cssLanguage } from '@codemirror/lang-css';
 import { formatCss } from '../core/format.mjs';
 
-const SAMPLE_CSS = `/* Paste CSS here */
-
-.card {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 16px 24px;
-  border: 1px solid #e5e7eb;
-  border-radius: 8px;
-  font-size: 14px;
-  color: #1f2937;
-}
-
-.card:hover {
-  background-color: #f3f4f6;
-}
-
-@media (min-width: 768px) {
-  .card {
-    padding: 32px;
-  }
-}
-`;
 
 /** Wait for typing to settle before re-converting. */
 function useDebounced(callback, delay) {
@@ -39,12 +16,12 @@ function useDebounced(callback, delay) {
     );
 }
 
-const Editor = ({ onChange }) => {
-    const [value, setValue] = useState(SAMPLE_CSS);
+const Editor = ({ value, onChange }) => {
     // CodeMirror 6 needs a DOM, so it cannot render during Gatsby's static
     // HTML pass. Mounting it after hydration keeps the server and first client
     // render identical.
     const [mounted, setMounted] = useState(false);
+
     // CodeMirror is stubbed out during Gatsby's static HTML pass (see
     // gatsby-node.js), so `cssLanguage` does not exist there. Building the
     // extension list only after mount keeps SSR from calling it.
@@ -54,30 +31,31 @@ const Editor = ({ onChange }) => {
 
     const debouncedOnChange = useDebounced(onChange, 250);
 
+    /* The last text CodeMirror reported, before the debounce.
+       Conversion can lag a keystroke or two, but an action taken *on* the text
+       cannot: reading the `value` prop inside Tidy would format whatever was
+       there up to 250ms ago and silently discard anything typed since. */
+    const latestText = useRef(value);
+    useEffect(() => {
+        latestText.current = value;
+    }, [value]);
+
+    // Typing is debounced so a long stylesheet is not reconverted per
+    // keystroke; loading an example replaces `value` outright and converts on
+    // the spot, since there is nothing to settle.
     const handleChange = useCallback(
         (next) => {
-            setValue(next);
+            latestText.current = next;
             debouncedOnChange(next);
         },
         [debouncedOnChange]
     );
 
     const tidy = useCallback(() => {
-        setValue((current) => {
-            // Unparseable CSS is returned untouched; the conversion panel
-            // already reports the syntax error.
-            const formatted = formatCss(current);
-            onChange(formatted);
-            return formatted;
-        });
+        // Unparseable CSS is returned untouched; the conversion panel already
+        // reports the syntax error.
+        onChange(formatCss(latestText.current));
     }, [onChange]);
-
-    // Convert the sample once on mount so the panel is never empty.
-    useEffect(() => {
-        onChange(SAMPLE_CSS);
-        // Deliberately runs only on mount; later edits come through handleChange.
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []);
 
     return (
         <div className="relative h-full w-full min-w-0 border-r border-slate-800 bg-slate-900">

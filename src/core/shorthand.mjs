@@ -53,6 +53,10 @@ const BORDER_STYLE_KEYWORDS = new Set([
 
 const LENGTH_KEYWORDS = new Set(['thin', 'medium', 'thick']);
 
+/** `text-decoration` is `<line> || <style> || <color> || <thickness>`. */
+const DECORATION_LINES = new Set(['none', 'underline', 'overline', 'line-through', 'blink']);
+const DECORATION_STYLES = new Set(['solid', 'double', 'dotted', 'dashed', 'wavy']);
+
 /**
  * Keywords that modify the value beside them rather than being a value of
  * their own. `place-content: safe center` is one alignment, not two — so it
@@ -139,6 +143,42 @@ function expandBorder(property, value) {
 }
 
 /**
+ * `text-decoration: underline` — Tailwind's `underline` utility sets
+ * `text-decoration-line`, so the shorthand has to be split or the most common
+ * spelling of the most common decoration misses it entirely.
+ */
+function expandTextDecoration(value) {
+    const values = splitTopLevel(value, ' ').filter(Boolean);
+    if (values.length === 0 || values.length > 4) return null;
+
+    const result = [];
+    let sawLine = false;
+    let sawStyle = false;
+    let sawColor = false;
+    let sawThickness = false;
+
+    for (const token of values) {
+        if (!sawLine && DECORATION_LINES.has(token)) {
+            result.push(['text-decoration-line', token]);
+            sawLine = true;
+        } else if (!sawStyle && DECORATION_STYLES.has(token)) {
+            result.push(['text-decoration-style', token]);
+            sawStyle = true;
+        } else if (!sawThickness && (token === 'auto' || token === 'from-font' || /^[\d.]+[a-z%]*$/.test(token))) {
+            result.push(['text-decoration-thickness', token]);
+            sawThickness = true;
+        } else if (!sawColor && isColor(token)) {
+            result.push(['text-decoration-color', token]);
+            sawColor = true;
+        } else {
+            return null;
+        }
+    }
+
+    return result.length ? result : null;
+}
+
+/**
  * Expand one declaration into the longhands the matcher can look up.
  *
  * Returns an array of `[property, value]` pairs — always at least the input
@@ -173,6 +213,10 @@ export function expandDeclaration(property, value) {
 
     if (prop === 'border' || /^border-(top|right|bottom|left|block|inline)$/.test(prop)) {
         return expandBorder(prop, val) || identity;
+    }
+
+    if (prop === 'text-decoration') {
+        return expandTextDecoration(val) || identity;
     }
 
     // `background: gray` is a color, not a layer stack. The v1 converter

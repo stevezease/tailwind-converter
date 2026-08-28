@@ -1,7 +1,9 @@
 import React, { useMemo, useState } from 'react';
 import Editor from '../components/editor';
-import Output from '../components/output';
+import Output, { hasReviewableMatches } from '../components/output';
 import Settings from '../components/settings';
+import ExamplesMenu from '../components/examples-menu';
+import examples from '../data/examples.mjs';
 import { convertCss, DEFAULT_SETTINGS } from '../core/convert.mjs';
 import tailwindMap from '../generated/tailwind-map.json';
 import siteMetadata from '../site-metadata';
@@ -10,7 +12,9 @@ import '../style.css';
 const INITIAL_SETTINGS = { ...DEFAULT_SETTINGS, sortClasses: true };
 
 const IndexPage = () => {
-    const [css, setCss] = useState('');
+    // The page owns the stylesheet so the examples menu and the editor are
+    // writing to the same place.
+    const [css, setCss] = useState(examples[0].css);
     const [settings, setSettings] = useState(INITIAL_SETTINGS);
     const [settingsOpen, setSettingsOpen] = useState(false);
 
@@ -19,6 +23,10 @@ const IndexPage = () => {
     const result = useMemo(() => convertCss(css, tailwindMap, settings), [css, settings]);
 
     const ruleCount = result.rules.length;
+    // The key earns its place only when something in the output actually
+    // warrants a look; a permanent legend is noise once the reader has learnt
+    // it, and a key for a state that is not on screen is worse than none.
+    const showKey = hasReviewableMatches(result, settings);
 
     return (
         <main className="flex h-full w-full flex-col overflow-hidden bg-white text-slate-900 lg:flex-row">
@@ -28,7 +36,7 @@ const IndexPage = () => {
             <h1 className="sr-only">{siteMetadata.tagline}</h1>
 
             <section className="h-1/2 w-full lg:h-full lg:w-5/12" aria-label="CSS input">
-                <Editor onChange={setCss} />
+                <Editor value={css} onChange={setCss} />
             </section>
 
             <section className="flex h-1/2 w-full min-w-0 flex-col lg:h-full lg:w-7/12" aria-label="Tailwind output">
@@ -36,13 +44,26 @@ const IndexPage = () => {
                     <h2 className="text-[11px] font-semibold uppercase tracking-widest text-slate-500">
                         Tailwind
                     </h2>
-                    <p className="text-[11px] tabular-nums text-slate-400">
-                        {ruleCount} {ruleCount === 1 ? 'rule' : 'rules'} · v{tailwindMap.tailwindVersion}
-                    </p>
+                    <div className="flex items-center gap-3 text-[11px] text-slate-400">
+                        {showKey && (
+                            <span className="text-amber-700">
+                                <span
+                                    aria-hidden="true"
+                                    className="mr-1 inline-block h-2 w-4 rounded-xs bg-amber-50 underline decoration-amber-400 decoration-wavy align-middle"
+                                />
+                                worth checking
+                            </span>
+                        )}
+                        <span className="tabular-nums">
+                            {ruleCount} CSS {ruleCount === 1 ? 'rule' : 'rules'} · Tailwind v
+                            {tailwindMap.tailwindVersion}
+                        </span>
+                        <ExamplesMenu onPick={setCss} />
+                    </div>
                 </header>
 
                 <div className="min-h-0 flex-1 overflow-y-auto">
-                    <Output result={result} />
+                    <Output result={result} settings={settings} />
                 </div>
 
                 <Settings
