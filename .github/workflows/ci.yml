@@ -1,0 +1,40 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      # The conversion map is generated from the installed Tailwind release and
+      # committed. Regenerating must produce no diff — if it does, either
+      # Tailwind changed or the generator did, and the map needs recommitting.
+      - name: Regenerate the conversion map
+        run: npm run build:map
+
+      - name: Check the committed map matches the installed Tailwind
+        run: |
+          if ! git diff --quiet -- src/generated/tailwind-map.json; then
+            echo "::error::The committed map is stale. Run 'npm run build:map' and commit the result."
+            git diff --stat -- src/generated/tailwind-map.json
+            exit 1
+          fi
+
+      # ~4,900 round-trip assertions generated from the installed release, so a
+      # Tailwind bump re-derives the whole suite rather than testing yesterday's.
+      - run: npm test
+
+      - run: npm run build

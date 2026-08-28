@@ -1,83 +1,133 @@
 import React from 'react';
-import Header from './header';
-import { convertCss } from '../scripts/parser/parser';
-import TailwindBlock from './tailwind-block';
+import CopyButton from './tailwind-block';
+import { QUALITY } from '../core/convert.mjs';
 
-const Output = ({ settings, cssTree, editorErrors }) => {
-    const parseStyleTree = (styleTree, selector) => {
-        let tailWindStyles = [];
-        const errors = [];
-        const isHover = selector.indexOf(':hover') !== -1;
-        for (let i = 0; i < styleTree.length; i++) {
-            const property = styleTree[i];
-            const value = styleTree[property];
-            convertCss(property, value, tailWindStyles, errors, settings);
-        }
-        if(settings.classPrefix !== ''){
-            tailWindStyles = tailWindStyles.map(element => {
-                return settings.classPrefix+'-'+element
-            })
-        }
-        return [tailWindStyles, errors];
-    };
-    console.log(cssTree);
+/**
+ * How each match tier is presented.
+ *
+ * The v1 converter rounded values silently and reported nothing, so a 13px
+ * padding quietly became 12px. Every non-exact result is labelled here.
+ */
+const QUALITY_STYLES = {
+    [QUALITY.EXACT]: null,
+    [QUALITY.CONVERTED]: {
+        label: 'unit converted',
+        className: 'bg-sky-100 text-sky-900',
+    },
+    [QUALITY.ROUNDED]: {
+        label: 'rounded',
+        className: 'bg-amber-100 text-amber-900',
+    },
+    [QUALITY.NEAREST_COLOR]: {
+        label: 'nearest colour',
+        className: 'bg-violet-100 text-violet-900',
+    },
+    [QUALITY.ARBITRARY]: {
+        label: 'arbitrary value',
+        className: 'bg-slate-200 text-slate-700',
+    },
+};
+
+const ClassPill = ({ match }) => {
+    const style = QUALITY_STYLES[match.quality];
+    const title = match.note || (style ? style.label : 'exact match');
+
     return (
-        <div className="flex-grow h-full w-full p-2 border-box overflow-y-auto">
-            <div class="flex tracking-wide text-teal-900 text-lg items-center uppercase font-bold mb-2">
-                <svg
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    stroke-width="2"
-                    viewBox="0 0 64 64"
-                    class="h-6 w-auto hidden md:block"
-                >
-                    <path d="M32 16C24.8 16 20.3 19.6 18.5 26.8C21.2 23.2 24.35 21.85 27.95 22.75C30.004 23.2635 31.4721 24.7536 33.0971 26.4031C35.7443 29.0901 38.8081 32.2 45.5 32.2C52.7 32.2 57.2 28.6 59 21.4C56.3 25 53.15 26.35 49.55 25.45C47.496 24.9365 46.0279 23.4464 44.4029 21.7969C41.7557 19.1099 38.6919 16 32 16ZM18.5 32.2C11.3 32.2 6.8 35.8 5 43C7.7 39.4 10.85 38.05 14.45 38.95C16.504 39.4635 17.9721 40.9536 19.5971 42.6031C22.2443 45.2901 25.3081 48.4 32 48.4C39.2 48.4 43.7 44.8 45.5 37.6C42.8 41.2 39.65 42.55 36.05 41.65C33.996 41.1365 32.5279 39.6464 30.9029 37.9969C28.2557 35.3099 25.1919 32.2 18.5 32.2Z"></path>
-                </svg>
-                Css Tailwind Converter
+        <span
+            title={title}
+            className={`rounded-sm px-1.5 py-0.5 font-mono text-[13px] ${
+                style ? style.className : 'text-slate-800'
+            }`}
+        >
+            {match.className}
+        </span>
+    );
+};
+
+const RuleResult = ({ rule }) => {
+    const approximate = rule.matches.filter((match) => match.quality !== QUALITY.EXACT);
+
+    return (
+        <div className="border-b border-slate-200 px-4 py-3">
+            <div className="mb-1.5 flex items-baseline justify-between gap-3">
+                <code className="truncate font-mono text-xs text-slate-500">{rule.selector}</code>
+                {rule.classNames && <CopyButton text={rule.classNames} />}
             </div>
-            {/* {(!cssTree || cssTree.length === 0) && editorErrors && (
-                <div className="text-red-900 text-base my-4">
-                    Error parsing CSS, please fix any errors
+
+            {rule.classNames ? (
+                <div className="flex flex-wrap items-center gap-x-1 gap-y-1">
+                    {rule.matches.map((match, index) => (
+                        <ClassPill key={`${match.className}-${index}`} match={match} />
+                    ))}
                 </div>
-            )} */}
-            {(!cssTree || cssTree.length === 0) && (
-                <div className="text-teal-900 text-base my-4">
-                    Type or paste CSS to the right to get started!
+            ) : (
+                <p className="text-sm text-slate-400">Nothing to convert.</p>
+            )}
+
+            {approximate.length > 0 && (
+                <ul className="mt-2 space-y-0.5 text-xs text-slate-500">
+                    {approximate.map((match, index) => (
+                        <li key={`${match.className}-note-${index}`}>
+                            <span className="font-mono text-slate-600">{match.className}</span>
+                            {' — '}
+                            {match.note || QUALITY_STYLES[match.quality]?.label}
+                            {/* Four decimals: a near-exact palette hit is around
+                                0.0005, and three decimals renders that as
+                                "0.000", which reads as exact when it is not. */}
+                            {match.distance !== undefined && ` (Δ ${match.distance.toFixed(4)})`}
+                        </li>
+                    ))}
+                </ul>
+            )}
+
+            {rule.unsupportedAtRules.length > 0 && (
+                <p className="mt-2 text-xs text-amber-700">
+                    No variant for {rule.unsupportedAtRules.join(', ')} — the classes above apply
+                    unconditionally.
+                </p>
+            )}
+
+            {rule.unconverted.length > 0 && (
+                <div className="mt-2 rounded-sm bg-amber-50 px-2 py-1.5 text-xs text-amber-900">
+                    <p className="font-semibold">Not converted</p>
+                    {rule.unconverted.map((declaration, index) => (
+                        <code key={index} className="block font-mono">
+                            {declaration.property}: {declaration.value};
+                        </code>
+                    ))}
                 </div>
             )}
-            {cssTree &&
-                cssTree.length !== 0 &&
-                cssTree.map(([selector, styleTree]) => {
-                    const [tailWindStyles, errors] = parseStyleTree(
-                        styleTree,
-                        selector
-                    );
+        </div>
+    );
+};
 
-                    return (
-                        <div className="mb-6 text-sm">
-                            <div className="text-gray-700">{selector}</div>
-                            {tailWindStyles.length !== 0 && (
-                                <TailwindBlock
-                                    tailWindStyles={tailWindStyles.join(' ')}
-                                />
-                            )}
-                            {errors.length !== 0 && (
-                                <div>
-                                    <div className="rounded text-yellow-900 bg-yellow-100 leading-4 p-2 py-1 inline-block text-xs transition">
-                                        <div className="font-bold">
-                                            Unable to Convert:
-                                        </div>
-                                        {errors.map((error) => (
-                                            <div>{error}</div>
-                                        ))}
-                                    </div>
-                                </div>
-                            )}
-                        </div>
-                    );
-                })}
+const Output = ({ result }) => {
+    if (result.error) {
+        return (
+            <div className="px-4 py-6">
+                <p className="text-sm text-rose-700">
+                    Could not parse the CSS: {result.error.message}
+                    {result.error.line !== undefined && ` (line ${result.error.line})`}
+                </p>
+            </div>
+        );
+    }
+
+    if (result.rules.length === 0) {
+        return (
+            <div className="px-4 py-6">
+                <p className="text-sm text-slate-400">
+                    Paste CSS on the left to see the equivalent Tailwind classes.
+                </p>
+            </div>
+        );
+    }
+
+    return (
+        <div>
+            {result.rules.map((rule, index) => (
+                <RuleResult key={`${rule.selector}-${index}`} rule={rule} />
+            ))}
         </div>
     );
 };

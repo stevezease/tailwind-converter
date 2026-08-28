@@ -1,145 +1,118 @@
-// https://github.com/scniro/react-codemirror2/issues/83
-import React, { useState, useEffect } from 'react';
-import { Controlled as CodeMirror } from 'react-codemirror2';
-import 'codemirror/addon/edit/matchbrackets';
-import 'codemirror/addon/edit/closebrackets';
-import 'codemirror/addon/comment/comment';
-import 'codemirror/addon/lint/lint.css';
-import 'codemirror/addon/search/match-highlighter';
-import parseCSS from 'css-rules';
-import { css } from 'js-beautify';
-import CSSLint from 'csslint';
-import 'codemirror/mode/css/css';
-import 'codemirror/addon/lint/lint';
-import 'codemirror/addon/lint/css-lint.js';
-import _ from 'lodash';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import CodeMirror from '@uiw/react-codemirror';
+import { css as cssLanguage } from '@codemirror/lang-css';
+import { formatCss } from '../core/format.mjs';
 
-if (typeof window !== `undefined`) {
-    window.CSSLint = CSSLint.CSSLint;
-}
+const SAMPLE_CSS = `/* Paste CSS here */
 
-const initialEditorOptions = {
-    value: `/* PASTE CSS HERE */
-
-example1 {
-  height: 5px;
-  width: 10px;
-  background: gray;
-  border-width: 1px;
-  border-radius: 3px;
-  /* Complex/Shorthand styles Not supported*/
-  padding: 5px 10px;
-}
-
-example2 {
-  position: absolute;
-  right: 0;
+.card {
   display: flex;
-  justify-content: space-between;
   align-items: center;
-}`,
-    data: {},
-    editor: {},
-};
+  gap: 8px;
+  padding: 16px 24px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  font-size: 14px;
+  color: #1f2937;
+}
 
-const debouncedUpdateTree = _.debounce(
-    (setCssTree, parse, value, setEditorErrors, errors) => {
-        setCssTree(parse(value));
-        setEditorErrors(errors);
-        console.log(errors);
-    },
-    500
-);
+.card:hover {
+  background-color: #f3f4f6;
+}
 
-const Editor = ({ setCssTree, setEditorErrors }) => {
-    const [editorState, setEditorState] = useState(initialEditorOptions);
-    const tidy = () => {
-        try {
-            setEditorState(() => {
-                return {
-                    ...editorState,
-                    value: css(editorState.value),
-                };
-            });
-        } catch (e) {
-            console.log('error formatting', e);
-        }
-    };
-    const parse = (cssString) => {
-        try {
-            const parsedVal = parseCSS(cssString);
-            return parsedVal;
-        } catch (e) {
-            console.error('error parsing CSS', e);
-        }
-    };
+@media (min-width: 768px) {
+  .card {
+    padding: 32px;
+  }
+}
+`;
+
+/** Wait for typing to settle before re-converting. */
+function useDebounced(callback, delay) {
+    const timer = useRef(null);
+    return useCallback(
+        (...args) => {
+            if (timer.current) clearTimeout(timer.current);
+            timer.current = setTimeout(() => callback(...args), delay);
+        },
+        [callback, delay]
+    );
+}
+
+const Editor = ({ onChange }) => {
+    const [value, setValue] = useState(SAMPLE_CSS);
+    // CodeMirror 6 needs a DOM, so it cannot render during Gatsby's static
+    // HTML pass. Mounting it after hydration keeps the server and first client
+    // render identical.
+    const [mounted, setMounted] = useState(false);
+    // CodeMirror is stubbed out during Gatsby's static HTML pass (see
+    // gatsby-node.js), so `cssLanguage` does not exist there. Building the
+    // extension list only after mount keeps SSR from calling it.
+    const extensions = useMemo(() => (mounted ? [cssLanguage()] : []), [mounted]);
+
+    useEffect(() => setMounted(true), []);
+
+    const debouncedOnChange = useDebounced(onChange, 250);
+
+    const handleChange = useCallback(
+        (next) => {
+            setValue(next);
+            debouncedOnChange(next);
+        },
+        [debouncedOnChange]
+    );
+
+    const tidy = useCallback(() => {
+        setValue((current) => {
+            // Unparseable CSS is returned untouched; the conversion panel
+            // already reports the syntax error.
+            const formatted = formatCss(current);
+            onChange(formatted);
+            return formatted;
+        });
+    }, [onChange]);
+
+    // Convert the sample once on mount so the panel is never empty.
+    useEffect(() => {
+        onChange(SAMPLE_CSS);
+        // Deliberately runs only on mount; later edits come through handleChange.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
     return (
-        <div className="relative h-full w-4/12">
-            <div
-                className="absolute top-0 right-0 m-2 z-10 cursor-pointer text-gray-500 hover:text-gray-100"
-                onClick={() => {
-                    tidy();
-                }}
-            >
-                <div class="font-bold" style={{ fontSize: '0.5rem' }}>
-                    TIDY
-                </div>
-                <svg
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    strokeWidth="2"
-                    viewBox="0 0 24 24"
-                    className="w-6 h-4"
+        <div className="relative h-full w-full min-w-0 border-r border-slate-800 bg-slate-900">
+            <div className="flex items-center justify-between border-b border-slate-800 px-3 py-2">
+                <span className="text-[11px] font-semibold uppercase tracking-widest text-slate-400">
+                    CSS
+                </span>
+                <button
+                    type="button"
+                    onClick={tidy}
+                    className="rounded-sm px-2 py-1 text-[11px] font-semibold uppercase tracking-widest text-slate-400 transition hover:bg-slate-800 hover:text-slate-100 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-teal-400"
                 >
-                    <path d="M4 6h16M4 12h16m-7 6h7"></path>
-                </svg>
+                    Tidy
+                </button>
             </div>
-            {typeof window !== 'undefined' && window.navigator && (
-                <CodeMirror
-                    value={editorState.value}
-                    options={{
-                        mode: 'css',
-                        theme: 'material',
-                        lineNumbers: true,
-                        matchBrackets: true,
-                        autoCloseBrackets: true,
-                        gutters: ['CodeMirror-lint-markers'],
-                        lint: true,
-                    }}
-                    onBeforeChange={(editor, data, value) => {
-                        setEditorState({ editor, data, value });
-                    }}
-                    editorDidMount={(editor, [next]) => {
-                        debouncedUpdateTree(
-                            setCssTree,
-                            parse,
-                            initialEditorOptions.value,
-                            setEditorErrors,
-                            editor.state.lint.marked.length > 0
-                        );
-                    }}
-                    onChange={(editor, data, value) => {
-                        console.log(
-                            editor.state.lint,
-                            editor.state.lint.marked,
-                            editor.state.lint.marked.length
-                        );
-                        debouncedUpdateTree(
-                            setCssTree,
-                            parse,
-                            value,
-                            setEditorErrors,
-                            editor.state.lint.marked.length > 0
-                        );
-                        // setCssTree(parse(value));
-                        // setEditorErrors(editor.state.lint.marked.length > 0);
-                        // console.log(editor, data, parse(value));
-                    }}
-                />
-            )}
+            <div className="h-[calc(100%-37px)] overflow-hidden">
+                {mounted ? (
+                    <CodeMirror
+                        value={value}
+                        height="100%"
+                        theme="dark"
+                        extensions={extensions}
+                        onChange={handleChange}
+                        basicSetup={{
+                            lineNumbers: true,
+                            foldGutter: false,
+                            highlightActiveLine: false,
+                        }}
+                    />
+                ) : (
+                    <pre className="h-full overflow-auto p-3 font-mono text-[13px] leading-relaxed text-slate-400">
+                        {value}
+                    </pre>
+                )}
+            </div>
         </div>
     );
 };

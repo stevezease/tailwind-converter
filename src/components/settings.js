@@ -1,120 +1,99 @@
-import React, { useState } from 'react';
-import Header from './header';
+import React from 'react';
 
-const Settings = ({ settings, setSettings }) => {
-    const [expanded, setExpanded] = useState(false);
-    const handleChange = (attribute, value) => {
-        setSettings({
-            ...settings,
-            [attribute]: value,
-        });
-    };
+/**
+ * Conversion settings. Every option maps directly onto a field the converter
+ * core reads, so nothing here needs to know how matching works.
+ */
+const Settings = ({ settings, onChange, open, onToggle }) => {
+    const set = (key, value) => onChange({ ...settings, [key]: value });
+
     return (
-        <div
-            className={`absolute flex-grow h-screen w-full p-2 px-2 border-box border-b border-gray-500 border-solid transition-all duration-500 ease-in-out ${
-                expanded ? 'shadow' : ''
-            }`}
-            style={{
-                maxWidth: '300px',
-                right: expanded ? '0px' : '-260px',
-                backgroundColor: expanded ? 'white' : 'transparent',
-            }}
-        >
-            <div className="w-full h-full relative text-teal-900">
-                <div
-                    className="flex tracking-wide text-base items-center uppercase leading-7"
-                    style={{ height: '1.75rem' }}
-                >
-                    <svg
-                        fill="none"
-                        stroke="currentColor"
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                        stroke-width="2"
-                        viewBox="0 0 24 24"
-                        class="w-6 h-6 mr-1 cursor-pointer hover:text-teal-600 transition duration-150"
-                        onClick={() => {
-                            setExpanded(!expanded);
-                        }}
-                    >
-                        <path d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path>
-                        <path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
-                    </svg>
-                    {'Settings'}
+        <div className="border-t border-slate-200 bg-white">
+            <button
+                type="button"
+                onClick={onToggle}
+                aria-expanded={open}
+                className="flex w-full items-center justify-between px-4 py-2 text-[11px] font-semibold uppercase tracking-widest text-slate-500 transition hover:text-slate-800 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-teal-500"
+            >
+                Settings
+                <span aria-hidden="true" className="text-slate-400">
+                    {open ? '−' : '+'}
+                </span>
+            </button>
+
+            {open && (
+                <div className="space-y-3 px-4 pb-4 text-sm">
+                    <label className="flex items-center justify-between gap-4">
+                        <span className="text-slate-600">Pixels per rem</span>
+                        <input
+                            type="number"
+                            min="1"
+                            max="100"
+                            value={settings.remConversion}
+                            onChange={(event) => set('remConversion', Number(event.target.value) || 16)}
+                            className="w-20 rounded-sm border border-slate-300 px-2 py-1 text-right tabular-nums focus:border-teal-500 focus:outline-hidden"
+                        />
+                    </label>
+
+                    <label className="flex items-center justify-between gap-4">
+                        <span className="text-slate-600">
+                            Colour tolerance
+                            <span className="ml-1 tabular-nums text-slate-400">
+                                {Number(settings.colorTolerance).toFixed(3)}
+                            </span>
+                        </span>
+                        <input
+                            type="range"
+                            min="0"
+                            max="0.12"
+                            step="0.005"
+                            value={settings.colorTolerance}
+                            onChange={(event) => set('colorTolerance', Number(event.target.value))}
+                            className="w-28"
+                        />
+                    </label>
+
+                    <label className="flex items-center justify-between gap-4">
+                        <span className="text-slate-600">
+                            Arbitrary values
+                            <span className="block text-xs text-slate-400">
+                                Emit <code>w-[13px]</code> instead of giving up
+                            </span>
+                        </span>
+                        <input
+                            type="checkbox"
+                            checked={settings.arbitraryValues}
+                            onChange={(event) => set('arbitraryValues', event.target.checked)}
+                            className="size-4 accent-teal-600"
+                        />
+                    </label>
+
+                    <label className="flex items-center justify-between gap-4">
+                        <span className="text-slate-600">
+                            Round to theme scale
+                            <span className="block text-xs text-slate-400">
+                                Snap near misses, and say so
+                            </span>
+                        </span>
+                        <input
+                            type="checkbox"
+                            checked={settings.roundToScale}
+                            onChange={(event) => set('roundToScale', event.target.checked)}
+                            className="size-4 accent-teal-600"
+                        />
+                    </label>
+
+                    <label className="flex items-center justify-between gap-4">
+                        <span className="text-slate-600">Tailwind class order</span>
+                        <input
+                            type="checkbox"
+                            checked={settings.sortClasses}
+                            onChange={(event) => set('sortClasses', event.target.checked)}
+                            className="size-4 accent-teal-600"
+                        />
+                    </label>
                 </div>
-                {expanded && (
-                    <div>
-                        <div className="w-full flex justify-between text-sm my-2 items-center">
-                            <label>Number of px per rem</label>
-                            <input
-                                value={settings.classPrefix}
-                                onChange={(event) =>
-                                    handleChange(
-                                        'classPrefix',
-                                        event.target.value
-                                    )
-                                }
-                                className="rounded border border-teal-800 border-solid"
-                                type="number"
-                                id="classPrefix"
-                                name="classPrefix"
-                                min="5"
-                                max="300"
-                            ></input>
-                        </div>
-                        <div className="w-full flex justify-between text-sm my-2 items-center">
-                            <label>Prefix</label>
-                            <input
-                                value={settings.classPrefix}
-                                onChange={(event) =>
-                                    handleChange(
-                                        'classPrefix',
-                                        event.target.value
-                                    )
-                                }
-                                className="rounded border border-teal-800 border-solid"
-                                type="text"
-                                id="classPrefix"
-                                name="classPrefix"
-                            ></input>
-                        </div>
-                        <div className="w-full flex justify-between text-sm my-2 items-center">
-                            <label>Auto Convert Margin/Padding</label>
-                            <input
-                                value={settings.autoConvertSpacing}
-                                checked={settings.autoConvertSpacing}
-                                onChange={(event) =>
-                                    handleChange(
-                                        'autoConvertSpacing',
-                                        event.target.checked
-                                    )
-                                }
-                                className="rounded border border-teal-800 border-solid"
-                                type="checkbox"
-                                id="autoConvertSpacing"
-                                name="autoConvertSpacing"
-                            ></input>
-                        </div>
-                        <div className="w-full flex justify-between text-sm my-2 items-center">
-                            <label>Auto Convert Color</label>
-                            <input
-                                value={settings.autoConvertColor}
-                                checked={settings.autoConvertColor}
-                                onChange={(event) =>
-                                    handleChange(
-                                        'autoConvertColor',
-                                        event.target.checked
-                                    )
-                                }
-                                className="rounded border border-teal-800 border-solid"
-                                type="checkbox"
-                                id="autoConvertColor"
-                                name="autoConvertColor"
-                            ></input>
-                        </div>
-                    </div>
-                )}
-            </div>
+            )}
         </div>
     );
 };

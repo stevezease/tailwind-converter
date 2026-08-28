@@ -1,21 +1,17 @@
 /**
- * Implement Gatsby's Node APIs in this file.
+ * CodeMirror 6 requires a DOM and cannot be evaluated during Gatsby's static
+ * HTML pass, so it is replaced with an empty module there. The editor mounts
+ * it only after hydration (see src/components/editor.js), and nothing else in
+ * the build references it.
  *
- * See: https://www.gatsbyjs.org/docs/node-apis/
+ * The pattern covers `codemirror`, `@codemirror/*` and `@uiw/react-codemirror`.
  */
-
-// You can delete this file if you're not using it
 exports.onCreateWebpackConfig = ({ stage, loaders, actions }) => {
-    if (stage === 'build-html') {
-        actions.setWebpackConfig({
-            module: {
-                rules: [
-                    {
-                        test: /codemirror/,
-                        use: loaders.null(),
-                    },
-                ],
-            },
-        });
-    }
+    if (stage !== 'build-html') return;
+
+    actions.setWebpackConfig({
+        module: {
+            rules: [{ test: /codemirror/, use: loaders.null() }],
+        },
+    });
 };

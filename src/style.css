@@ -1,27 +1,48 @@
-@import '../node_modules/tailwindcss/base.css';
+/**
+ * The app's own styling.
+ *
+ * `source(none)` disables Tailwind v4's automatic project scan, and the
+ * `@source` lines opt the UI back in. That is not a micro-optimisation: this
+ * repo contains a 200KB+ generated map of every Tailwind class name and a test
+ * suite full of CSS fixtures, and the automatic scan treats all of it as
+ * candidates — which both bloats the stylesheet with thousands of unused
+ * utilities and makes the build fail outright when a fixture like
+ * `url(x.png)` is read as an arbitrary value.
+ *
+ * Tailwind v4 is configured in CSS rather than a JS config file, so anything
+ * this app needs beyond the defaults belongs in the @theme block below. None
+ * of it affects the conversion map, which is generated separately by
+ * `npm run build:map`.
+ */
+@import 'tailwindcss' source(none);
 
-@import '../node_modules/tailwindcss/components.css';
+@source './components';
+@source './pages';
 
-@import '../node_modules/tailwindcss/utilities.css';
-
-@import '../node_modules/codemirror/lib/codemirror.css';
-@import '../node_modules/codemirror/theme/material.css';
-
-html {
-    overflow-y: hidden;
+@theme {
+    --font-sans: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue',
+        Arial, 'Noto Sans', sans-serif;
+    --font-mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas,
+        'Liberation Mono', monospace;
 }
-body {
-    font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI',
-        Roboto, 'Helvetica Neue', Arial, 'Noto Sans', sans-serif,
-        'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol',
-        'Noto Color Emoji';
-}
 
-.react-codemirror2,
-.CodeMirror {
+html,
+body,
+#___gatsby,
+#gatsby-focus-wrapper {
     height: 100%;
 }
 
-.transition {
-    transition: all 0.2s ease-in-out;
+body {
+    font-family: var(--font-sans);
+    overflow: hidden;
+}
+
+/* CodeMirror 6 injects its own styles; it only needs to be told to fill the pane. */
+.cm-editor {
+    height: 100%;
+}
+
+.cm-scroller {
+    font-family: var(--font-mono);
 }

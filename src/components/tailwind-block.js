@@ -1,51 +1,43 @@
-import React, { useState, useEffect } from 'react';
-import * as clipboard from 'clipboard-polyfill';
+import React, { useCallback, useEffect, useState } from 'react';
 
-const TailwindBlock = ({ tailWindStyles }) => {
+/** Copy to clipboard, with a short confirmation. */
+const CopyButton = ({ text }) => {
     const [copied, setCopied] = useState(false);
-    const [copiedText, setCopiedText] = useState('');
+
     useEffect(() => {
-        if (tailWindStyles !== copiedText) {
+        setCopied(false);
+    }, [text]);
+
+    useEffect(() => {
+        if (!copied) return undefined;
+        const timer = setTimeout(() => setCopied(false), 1600);
+        return () => clearTimeout(timer);
+    }, [copied]);
+
+    const copy = useCallback(async () => {
+        try {
+            await navigator.clipboard.writeText(text);
+            setCopied(true);
+        } catch {
+            // Clipboard access can be denied; the text is selectable either way.
             setCopied(false);
         }
-    });
+    }, [text]);
+
     return (
-        <div>
-            <div
-                className={`rounded h-6 leading-6 cursor-pointer px-1 inline-block transition ${
-                    copied
-                        ? 'text-green-900 bg-green-200'
-                        : 'text-teal-900 bg-gray-200 hover:bg-teal-800 hover:text-white'
-                }`}
-                onClick={() => {
-                    clipboard.writeText(tailWindStyles);
-                    setCopied(true);
-                    setCopiedText(tailWindStyles);
-                }}
-            >
-                <div className="flex items-center">
-                    <svg
-                        fill="none"
-                        stroke="currentColor"
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                        stroke-width="2"
-                        viewBox="0 0 24 24"
-                        className="w-5 h-5 mr-1"
-                    >
-                        <path
-                            d={`${
-                                copied
-                                    ? 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4'
-                                    : 'M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3'
-                            }`}
-                        ></path>
-                    </svg>
-                    {tailWindStyles}
-                </div>
-            </div>
-        </div>
+        <button
+            type="button"
+            onClick={copy}
+            aria-label={copied ? 'Copied' : 'Copy classes'}
+            className={`shrink-0 rounded-sm px-2 py-1 text-[10px] font-semibold uppercase tracking-widest transition focus:outline-hidden focus-visible:ring-2 focus-visible:ring-teal-500 ${
+                copied
+                    ? 'bg-emerald-100 text-emerald-800'
+                    : 'bg-slate-100 text-slate-500 hover:bg-slate-200 hover:text-slate-700'
+            }`}
+        >
+            {copied ? 'Copied' : 'Copy'}
+        </button>
     );
 };
 
-export default React.memo(TailwindBlock);
+export default React.memo(CopyButton);
