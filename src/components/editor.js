@@ -59,7 +59,7 @@ const Editor = ({ value, onChange }) => {
 
     return (
         <div className="relative h-full w-full min-w-0 border-r border-slate-800 bg-slate-900">
-            <div className="flex items-center justify-between border-b border-slate-800 px-3 py-2">
+            <div className="flex h-10 items-center justify-between border-b border-slate-800 px-3">
                 <span className="text-[11px] font-semibold uppercase tracking-widest text-slate-400">
                     CSS
                 </span>

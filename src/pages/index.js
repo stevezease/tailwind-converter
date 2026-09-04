@@ -60,11 +60,12 @@ const IndexPage = () => {
     const showKey = hasReviewableMatches(result, settings);
 
     return (
-        <>
-            {/* `h-screen` rather than `h-full`: the tool still owns exactly one
-                viewport, but the document now continues past it, so the height
-                has to come from the viewport rather than from a locked body. */}
-            <main className="flex h-screen w-full flex-col overflow-hidden bg-white text-slate-900 lg:flex-row">
+        // The whole page is exactly one viewport and never scrolls: the tool
+        // takes whatever height the reference panel leaves it. `h-dvh` rather
+        // than `h-screen` so that mobile browser chrome shrinks the tool
+        // instead of pushing the panel off the bottom of the screen.
+        <div className="flex h-dvh w-full flex-col overflow-hidden bg-white">
+            <main className="flex min-h-0 w-full flex-1 flex-col overflow-hidden bg-white text-slate-900 lg:flex-row">
                 {/* The visible interface is a two-column tool with no room for a
                     banner heading, but the page still needs one heading that says
                     what it is. The old markup had no h1 at all. */}
@@ -78,7 +79,7 @@ const IndexPage = () => {
                     className="flex h-1/2 w-full min-w-0 flex-col lg:h-full lg:w-7/12"
                     aria-label="Tailwind output"
                 >
-                    <header className="flex items-baseline justify-between border-b border-slate-200 px-4 py-2">
+                    <header className="flex h-10 items-center justify-between border-b border-slate-200 px-4">
                         <h2 className="text-[11px] font-semibold uppercase tracking-widest text-slate-500">
                             Tailwind
                         </h2>
@@ -113,81 +114,99 @@ const IndexPage = () => {
                 </section>
             </main>
 
-            {/* Everything below the fold is for the reader who arrived from a
-                search and wants to know what this is before pasting into it.
-                It is deliberately after the tool: someone who already knows
-                never has to scroll past prose to reach the thing they came for. */}
-            <div className="border-t border-slate-200 bg-white text-slate-900">
-                <div className="mx-auto max-w-3xl px-5 py-12">
-                    <h2 className="text-2xl font-semibold tracking-tight">
-                        Converting CSS to Tailwind
-                    </h2>
-                    <p className="mt-4 text-base leading-relaxed text-slate-700">
-                        Paste a stylesheet on the left and each rule comes back as the Tailwind
-                        classes that reproduce it. Shorthands are expanded before matching, so a
-                        four-value <span className="font-mono text-[13px]">padding</span> becomes
-                        the right combination of side classes rather than failing outright.
-                        Min-width media queries become breakpoint prefixes, and pseudo-classes
-                        become the matching variant.
-                    </p>
-                    <p className="mt-3 text-base leading-relaxed text-slate-700">
-                        The conversion table is generated from Tailwind v
-                        {tailwindMap.tailwindVersion} itself, at build time, rather than
-                        maintained by hand. That is the whole design: a hand-written mapping drifts
-                        the moment Tailwind ships a release, and a converter that answers with
-                        class names your Tailwind no longer has is worse than no converter. Nothing
-                        is uploaded — the conversion runs in your browser.
-                    </p>
-                    <p className="mt-3 text-base leading-relaxed text-slate-700">
-                        Where CSS has no Tailwind equivalent, the output says so instead of
-                        quietly dropping it. Off-scale values become arbitrary values in square
-                        brackets, and rules that utilities genuinely cannot express — a descendant
-                        selector, say — are flagged with the reason.
-                    </p>
+            {/* The reference prose for the reader who arrived from a search and
+                wants to know what this is before pasting into it. It sits in a
+                closed <details> docked to the bottom rather than below the fold:
+                the markup is still rendered into the HTML at build time, so a
+                crawler reads every word and the FAQ structured data still has a
+                body to describe, but the page no longer has a scrollbar that
+                someone dragging a stylesheet around has to fight.
 
-                    <h2 className="mt-10 text-2xl font-semibold tracking-tight">
-                        Look up a single property
-                    </h2>
-                    <p className="mt-3 text-base leading-relaxed text-slate-700">
-                        Every value and its class, for one property at a time:
-                    </p>
-                    <ul className="mt-4 flex flex-wrap gap-x-4 gap-y-2 text-sm">
-                        {POPULAR.map((property) => (
-                            <li key={property}>
-                                <Link
-                                    to={`/css/${property}-to-tailwind/`}
-                                    className="font-mono text-[13px] text-teal-700 underline underline-offset-4"
-                                >
-                                    {property}
-                                </Link>
-                            </li>
-                        ))}
-                    </ul>
-                    <p className="mt-4 text-sm">
-                        <Link
-                            to="/css/"
-                            className="font-semibold text-teal-700 underline underline-offset-4"
-                        >
-                            All CSS properties
-                        </Link>
-                    </p>
+                Opening it shrinks the tool above rather than growing the
+                document, and the prose scrolls inside its own half-screen. */}
+            <details className="group shrink-0 border-t border-slate-200 bg-white text-slate-900">
+                <summary className="flex h-6 cursor-pointer list-none items-center gap-1.5 px-4 text-[10px] font-semibold uppercase tracking-widest text-slate-500 hover:text-slate-800 [&::-webkit-details-marker]:hidden">
+                    <span
+                        aria-hidden="true"
+                        className="text-slate-400 transition-transform group-open:rotate-90"
+                    >
+                        &rsaquo;
+                    </span>
+                    About this converter
+                </summary>
 
-                    <h2 className="mt-10 text-2xl font-semibold tracking-tight">
-                        Common questions
-                    </h2>
-                    <dl className="mt-4 space-y-5">
-                        {faq.map((entry) => (
-                            <div key={entry.question}>
-                                <dt className="text-base font-semibold">{entry.question}</dt>
-                                <dd className="mt-1 text-base leading-relaxed text-slate-700">
-                                    {entry.answer}
-                                </dd>
-                            </div>
-                        ))}
-                    </dl>
+                <div className="max-h-[50vh] overflow-y-auto border-t border-slate-100">
+                    <div className="mx-auto max-w-3xl px-5 py-10">
+                        <h2 className="text-2xl font-semibold tracking-tight">
+                            Converting CSS to Tailwind
+                        </h2>
+                        <p className="mt-4 text-base leading-relaxed text-slate-700">
+                            Paste a stylesheet on the left and each rule comes back as the Tailwind
+                            classes that reproduce it. Shorthands are expanded before matching, so a
+                            four-value <span className="font-mono text-[13px]">padding</span> becomes
+                            the right combination of side classes rather than failing outright.
+                            Min-width media queries become breakpoint prefixes, and pseudo-classes
+                            become the matching variant.
+                        </p>
+                        <p className="mt-3 text-base leading-relaxed text-slate-700">
+                            The conversion table is generated from Tailwind v
+                            {tailwindMap.tailwindVersion} itself, at build time, rather than
+                            maintained by hand. That is the whole design: a hand-written mapping
+                            drifts the moment Tailwind ships a release, and a converter that answers
+                            with class names your Tailwind no longer has is worse than no converter.
+                            Nothing is uploaded — the conversion runs in your browser.
+                        </p>
+                        <p className="mt-3 text-base leading-relaxed text-slate-700">
+                            Where CSS has no Tailwind equivalent, the output says so instead of
+                            quietly dropping it. Off-scale values become arbitrary values in square
+                            brackets, and rules that utilities genuinely cannot express — a
+                            descendant selector, say — are flagged with the reason.
+                        </p>
+
+                        <h2 className="mt-10 text-2xl font-semibold tracking-tight">
+                            Look up a single property
+                        </h2>
+                        <p className="mt-3 text-base leading-relaxed text-slate-700">
+                            Every value and its class, for one property at a time:
+                        </p>
+                        <ul className="mt-4 flex flex-wrap gap-x-4 gap-y-2 text-sm">
+                            {POPULAR.map((property) => (
+                                <li key={property}>
+                                    <Link
+                                        to={`/css/${property}-to-tailwind/`}
+                                        className="font-mono text-[13px] text-teal-700 underline underline-offset-4"
+                                    >
+                                        {property}
+                                    </Link>
+                                </li>
+                            ))}
+                        </ul>
+                        <p className="mt-4 text-sm">
+                            <Link
+                                to="/css/"
+                                className="font-semibold text-teal-700 underline underline-offset-4"
+                            >
+                                All CSS properties
+                            </Link>
+                        </p>
+
+                        <h2 className="mt-10 text-2xl font-semibold tracking-tight">
+                            Common questions
+                        </h2>
+                        <dl className="mt-4 space-y-5">
+                            {faq.map((entry) => (
+                                <div key={entry.question}>
+                                    <dt className="text-base font-semibold">{entry.question}</dt>
+                                    <dd className="mt-1 text-base leading-relaxed text-slate-700">
+                                        {entry.answer}
+                                    </dd>
+                                </div>
+                            ))}
+                        </dl>
+                    </div>
                 </div>
-            </div>
-        </>
+            </details>
+        </div>
     );
 };
 
