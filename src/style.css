@@ -18,6 +18,7 @@
 
 @source './components';
 @source './pages';
+@source './templates';
 
 @theme {
     --font-sans: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue',
@@ -26,17 +27,18 @@
         'Liberation Mono', monospace;
 }
 
-html,
-body,
-#___gatsby,
-#gatsby-focus-wrapper {
-    height: 100%;
-}
-
 body {
     font-family: var(--font-sans);
-    overflow: hidden;
 }
+
+/*
+ * The converter is a viewport-height tool with reference prose underneath it,
+ * so the page as a whole has to scroll. It previously did not: `height: 100%`
+ * on the whole wrapper chain plus `overflow: hidden` on the body pinned the
+ * document to exactly one screen, which is right for a bare tool and makes
+ * anything below the fold unreachable. The panes size themselves from `h-screen`
+ * on the tool's own <main> instead, so the lock is no longer needed anywhere.
+ */
 
 /* CodeMirror 6 injects its own styles; it only needs to be told to fill the pane. */
 .cm-editor {

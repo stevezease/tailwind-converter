@@ -3,7 +3,7 @@ import siteMetadata from '../site-metadata';
 import '../style.css';
 
 const NotFoundPage = () => (
-    <main className="flex h-full flex-col items-center justify-center gap-2 bg-white text-slate-900">
+    <main className="flex min-h-screen flex-col items-center justify-center gap-2 bg-white text-slate-900">
         <h1 className="text-2xl font-semibold">Page not found</h1>
         <a className="text-teal-700 underline underline-offset-4" href="/">
             Back to the converter

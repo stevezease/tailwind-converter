@@ -5,18 +5,35 @@
  * `useStaticQuery`. Keeping the metadata in a plain module lets both sides
  * read the same values without a GraphQL round trip.
  */
+
+const map = require('./generated/tailwind-map.json');
+
+/**
+ * Major version only. The map's full version moves on every Tailwind patch,
+ * and a <title> that changes weekly is a title with no history — but the major
+ * is the part that actually distinguishes this converter from the ones still
+ * answering with v3 class names, so it earns its place in the tag.
+ */
+const tailwindMajor = map.tailwindVersion.split('.')[0];
+
 module.exports = {
     title: `TailwindCSS Converter`,
 
     /**
      * The phrase the site is actually found by, and the reason it leads the
-     * <title> rather than trailing it. The previous react-helmet setup built
-     * the same shape via `titleTemplate="%s | ${title}"`; this keeps that
-     * wording so existing rankings and links stay pointed at the same page.
+     * <title> rather than trailing it. The brand name used to trail it as
+     * "| TailwindCSS Converter", which restated the same three words; the
+     * version says something the first half does not.
      */
-    tagline: `Convert CSS to Tailwind`,
+    tagline: `CSS to Tailwind Converter`,
 
-    description: `Convert CSS to Tailwind utility classes. Paste your CSS and get the equivalent Tailwind classes, generated from the installed Tailwind release.`,
+    titleSuffix: `Tailwind v${tailwindMajor}`,
+
+    description: `Paste CSS and get the Tailwind classes. The conversion is generated from Tailwind v${map.tailwindVersion} itself rather than a hand-written list, so it tracks the release. No sign-up, nothing to install.`,
+
     author: `@StevenJin`,
     siteUrl: `https://tailwind-converter.netlify.app`,
+    tailwindVersion: map.tailwindVersion,
+    tailwindMajor,
+    spacingBase: map.spacingBase,
 };
