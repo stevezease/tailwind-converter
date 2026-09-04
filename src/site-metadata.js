@@ -29,7 +29,7 @@ module.exports = {
 
     titleSuffix: `Tailwind v${tailwindMajor}`,
 
-    description: `Paste CSS and get the Tailwind classes. The conversion is generated from Tailwind v${map.tailwindVersion} itself rather than a hand-written list, so it tracks the release. No sign-up, nothing to install.`,
+    description: `Paste your CSS and get v${tailwindMajor} Tailwind classes. Up to Date. No Sign Ups. No Install.`,
 
     author: `@StevenJin`,
     siteUrl: `https://tailwind-converter.netlify.app`,
