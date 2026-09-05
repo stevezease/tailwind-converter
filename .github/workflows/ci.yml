@@ -5,12 +5,23 @@ on:
     branches: [master]
   pull_request:
 
+# Needed by the map-regeneration step below, which pushes back to Dependabot's
+# branch. Every other job step only reads.
+permissions:
+  contents: write
+
 jobs:
   test:
     runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          # On a pull request the default checkout is a detached merge commit,
+          # which cannot be pushed to. Check out the PR branch itself so the
+          # regenerated map can be committed back to it. Empty on push events,
+          # where checkout falls back to the default ref.
+          ref: ${{ github.event.pull_request.head.ref }}
 
       - uses: actions/setup-node@v4
         with:
@@ -25,7 +36,26 @@ jobs:
       - name: Regenerate the conversion map
         run: npm run build:map
 
+      # A Dependabot PR bumps package.json but cannot run the generator, so the
+      # committed map is stale by construction. Regenerate it into the PR rather
+      # than failing it. The rest of this run — tests, build — then executes
+      # against the new release, so the PR's status reflects the regenerated map.
+      - name: Commit the regenerated map on Dependabot branches
+        if: github.actor == 'dependabot[bot]'
+        run: |
+          if git diff --quiet -- src/generated/tailwind-map.json; then
+            echo "Map already matches the installed release; nothing to commit."
+            exit 0
+          fi
+          version=$(node -p "require('./src/generated/tailwind-map.json').tailwindVersion")
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/generated/tailwind-map.json
+          git commit -m "Regenerate the conversion map for Tailwind v${version}"
+          git push
+
       - name: Check the committed map matches the installed Tailwind
+        if: github.actor != 'dependabot[bot]'
         run: |
           if ! git diff --quiet -- src/generated/tailwind-map.json; then
             echo "::error::The committed map is stale. Run 'npm run build:map' and commit the result."

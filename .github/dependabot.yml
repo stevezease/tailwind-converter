@@ -1,0 +1,28 @@
+version: 2
+
+updates:
+  # Only the Tailwind packages. The conversion map, the round-trip suite and
+  # every version string on the site are generated from the installed release,
+  # so a Tailwind bump is a content change, not just a dependency change.
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 2
+    allow:
+      - dependency-name: tailwindcss
+      - dependency-name: '@tailwindcss/postcss'
+    groups:
+      # These two must move together: build:map loads the design system from
+      # `tailwindcss` while the site compiles through `@tailwindcss/postcss`.
+      # A PR that bumps one and not the other generates a map that does not
+      # match the CSS the site ships.
+      tailwind:
+        patterns:
+          - tailwindcss
+          - '@tailwindcss/postcss'
+    commit-message:
+      prefix: deps
+    labels:
+      - dependencies
+      - tailwind
