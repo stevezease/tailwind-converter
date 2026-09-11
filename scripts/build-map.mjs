@@ -195,6 +195,10 @@ function deriveArbitraryPrefixes(designSystem, declarations, groups, propertyIni
     const votes = new Map(); // property -> Map(prefix -> count)
 
     const vote = (property, utility) => {
+        // `-m-2` would nominate `-m`, and `-m-[10px]` compiles, so the bogus
+        // prefix would survive verification and become the arbitrary-value
+        // spelling for `margin`.
+        if (utility.startsWith('-')) return;
         const dash = utility.lastIndexOf('-');
         if (dash <= 0) return;
         const prefix = utility.slice(0, dash);
@@ -293,6 +297,15 @@ function deriveArbitraryPrefixes(designSystem, declarations, groups, propertyIni
  * ------------------------------------------------------------------ */
 function preferred(a, b) {
     if (a === undefined) return b;
+
+    /* A utility with a name of its own beats the negation of another one.
+       Tailwind spells -0.025em twice: `tracking-tight`, which is the name, and
+       `-tracking-wide`, which is arithmetic. Both are the same length, so
+       without this the alphabetical tie-break handed the key to the `-`. */
+    const negativeA = a.startsWith('-');
+    const negativeB = b.startsWith('-');
+    if (negativeA !== negativeB) return negativeA ? b : a;
+
     if (a.length !== b.length) return a.length < b.length ? a : b;
     return a < b ? a : b;
 }
@@ -301,12 +314,21 @@ async function main() {
     const started = Date.now();
     const designSystem = await loadDesignSystem();
 
-    const utilities = designSystem
-        .getClassList()
-        .map((entry) => entry[0])
-        // Negative utilities re-encode a value the positive one already covers;
-        // the matcher derives them arithmetically instead.
-        .filter((name) => !name.startsWith('-'));
+    /* Negative utilities are indexed alongside the positive ones.
+
+       They used to be filtered out here, on the theory that the matcher
+       derives them arithmetically — but it only does so for the spacing
+       prefixes, via `matchSpacing`. Every other family fell through to an
+       arbitrary value: `rotate: -45deg` reached `rotate-[-45deg]` and
+       `translate: 0 -2px` reached `[translate:0_-0.125rem]`, while the
+       utilities `-rotate-45` and `-translate-y-0.5` existed all along.
+
+       They are indexed for exact lookup only. The color, spacing-multiplier
+       and prefix-voting paths all read a utility's *name* to derive a prefix,
+       and a leading `-` makes that name lie: `-m-2` would register a spacing
+       prefix of `-m`. Those paths skip negatives and keep reading the
+       positive utility that already speaks for the family. */
+    const utilities = designSystem.getClassList().map((entry) => entry[0]);
 
     const compiled = designSystem.candidatesToCss(utilities);
     const propertyInitials = collectPropertyInitials(compiled);
@@ -351,12 +373,17 @@ async function main() {
             continue;
         }
 
+        // See the note on `utilities`: a negative utility is indexed for exact
+        // lookup, but never consulted for a prefix or a rank.
+        const negative = utility.startsWith('-');
+
         /* --- colors: recorded as a palette plus a property->prefix table,
                never as thousands of exact-match keys. Tailwind's OKLCH palette
                cannot be string-matched against a stylesheet's hex values, so
                indexing every color utility would bloat the map with entries
                that can never be hit. --- */
-        const colorVar = resolved.length === 1 && /^var\(--color-([a-z0-9-]+)\)$/i.exec(resolved[0].raw.trim());
+        const colorVar =
+            !negative && resolved.length === 1 && /^var\(--color-([a-z0-9-]+)\)$/i.exec(resolved[0].raw.trim());
         if (colorVar) {
             const colorName = colorVar[1];
             const property = resolved[0].property;
@@ -377,7 +404,7 @@ async function main() {
                `p-13` is valid even though it is absent from getClassList().
                Recording the multiplier shape lets the matcher do arithmetic
                instead of a bounded table lookup. --- */
-        const multiplierMatch = /^(\d+(?:\.\d+)?)$/.exec(utility.split('-').pop() ?? '');
+        const multiplierMatch = negative ? null : /^(\d+(?:\.\d+)?)$/.exec(utility.split('-').pop() ?? '');
         if (multiplierMatch) {
             const step = multiplierMatch[1];
             const usesSpacing = resolved.every((decl) =>
@@ -418,13 +445,15 @@ async function main() {
             }
             groups.push(entry);
         }
+        indexed++;
+        if (negative) continue;
+
         indexedUtilities.add(utility);
         // Only the declarations the utility is *about*. A utility that merely
         // implies a property — every `transition-*` carries a default duration
         // — must not lend it that utility's rank, or `duration-*` sorts ahead
         // of the `transition-*` class it belongs to.
         for (const decl of required) noteProperty(decl.property, utility, required.length === 1);
-        indexed++;
     }
 
     // Largest groups first: matching `text-sm` (font-size + line-height) must

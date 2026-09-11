@@ -12,7 +12,7 @@
  * classes where two are correct.
  */
 
-import { splitTopLevel } from './css-value.mjs';
+import { splitTopLevel, formatNumber } from './css-value.mjs';
 import { normalizeProperty, normalizeValue } from './normalize.mjs';
 import { isColor } from './color.mjs';
 
@@ -348,13 +348,210 @@ function expandTransition(value) {
     return result;
 }
 
+/* ---- `font` ---------------------------------------------------------- *
+ *
+ * `font: 600 14px/1.5 ui-sans-serif, system-ui` is one declaration carrying
+ * four Tailwind utilities, and unexpanded it reached the single longest class
+ * the converter can emit — `[font:600_14px/1.5_ui-sans-serif,_system-ui]` —
+ * hiding a weight, a size, a line-height and a family that all have utilities
+ * of their own.
+ *
+ * The grammar is
+ *
+ *     [ <style> || <variant> || <weight> || <stretch> ]?
+ *     <size> [ / <line-height> ]? <family>
+ *
+ * so the size is the first token that is not one of the four optional
+ * keywords, and the family is everything after it. `normal` is the initial
+ * value of all four optional properties, so it is dropped rather than guessed
+ * at — writing it out says nothing.
+ */
+
+/** `font: menu` sets a whole system font; there is no longhand to split into. */
+const SYSTEM_FONT_KEYWORDS = new Set(['caption', 'icon', 'menu', 'message-box', 'small-caption', 'status-bar']);
+
+const FONT_STYLES = new Set(['italic', 'oblique']);
+const FONT_VARIANTS = new Set(['small-caps']);
+const FONT_WEIGHT_KEYWORDS = new Set(['bold', 'bolder', 'lighter']);
+const FONT_STRETCHES = new Set([
+    'ultra-condensed', 'extra-condensed', 'condensed', 'semi-condensed',
+    'semi-expanded', 'expanded', 'extra-expanded', 'ultra-expanded',
+]);
+
+const ANGLE = /^[+-]?(?:\d+\.?\d*|\.\d+)(deg|grad|rad|turn)$/i;
+const FONT_WEIGHT_NUMBER = /^(?:[1-9]\d{0,2}|1000)$/;
+
+function expandFont(value, raw) {
+    if (SYSTEM_FONT_KEYWORDS.has(value)) return null;
+
+    const tokens = splitTopLevel(value, ' ').filter(Boolean);
+    if (tokens.length < 2) return null;
+
+    /* Family names are the one part of this shorthand whose capitalisation is
+       worth keeping — `Helvetica Neue` reads as a font, `helvetica neue` reads
+       as a mistake — and `normalizeValue` has already lowercased everything
+       outside quotes by the time this runs. Re-tokenising the value as
+       written recovers it: normalisation only lowercases, collapses runs of
+       whitespace and reformats numbers, so the token *positions* line up. If
+       they somehow do not, the normalised family is still correct, just
+       lowercase. */
+    const rawTokens = splitTopLevel(String(raw ?? value).replace(/\s+/g, ' ').trim(), ' ').filter(Boolean);
+    const asWritten = rawTokens.length === tokens.length ? rawTokens : tokens;
+
+    const before = [];
+    let index = 0;
+
+    // The optional prefix. CSS lets these appear in any order, so each is
+    // identified by shape; `normal` is skipped because it is the initial value
+    // of every one of them.
+    for (; index < tokens.length; index++) {
+        const token = tokens[index];
+        if (token === 'normal') continue;
+
+        if (FONT_STYLES.has(token)) {
+            // `oblique 14deg` is one value in two tokens.
+            if (token === 'oblique' && ANGLE.test(tokens[index + 1] ?? '')) {
+                before.push(['font-style', `oblique ${tokens[++index]}`]);
+            } else {
+                before.push(['font-style', token]);
+            }
+        } else if (FONT_VARIANTS.has(token)) {
+            before.push(['font-variant', token]);
+        } else if (FONT_WEIGHT_KEYWORDS.has(token) || FONT_WEIGHT_NUMBER.test(token)) {
+            before.push(['font-weight', token]);
+        } else if (FONT_STRETCHES.has(token)) {
+            before.push(['font-stretch', token]);
+        } else {
+            break;
+        }
+    }
+
+    // What is left has to be a size and a family; without both this is not the
+    // `font` shorthand and guessing at it would invent declarations.
+    if (index >= tokens.length - 1) return null;
+
+    // The slash may carry whitespace on either side: `14px/1.5`, `14px / 1.5`,
+    // `14px /1.5`. Re-join until the size and its line-height are one token
+    // again, always leaving at least one token for the family.
+    const rest = tokens.slice(index);
+    let head = rest.shift();
+    let consumed = 1;
+    while (rest.length > 1 && (head.endsWith('/') || rest[0].startsWith('/'))) {
+        head += rest.shift();
+        consumed++;
+    }
+
+    const [size, lineHeight] = splitTopLevel(head, '/').map((part) => part.trim());
+    const family = asWritten.slice(index + consumed).join(' ').trim();
+    if (!size || !family) return null;
+
+    const result = [...before, ['font-size', size]];
+    if (lineHeight) result.push(['line-height', lineHeight]);
+    result.push(['font-family', family]);
+    return result;
+}
+
+/* ---- `transform` ----------------------------------------------------- *
+ *
+ * Tailwind v4 does not build `translate`, `rotate` and `scale` out of the
+ * `transform` property any more — `-translate-y-0.5` sets `translate`,
+ * `rotate-45` sets `rotate`. A stylesheet that writes the function form
+ * therefore reached none of them and landed in
+ * `transform-[translateY(-2px)]`, an arbitrary value for something with a
+ * utility.
+ *
+ * Rewriting the function form to the individual properties is only safe under
+ * two conditions, and both are enforced below rather than assumed:
+ *
+ *   - Each family appears at most once. `translateX(1px) rotate(45deg)
+ *     translateY(2px)` composes a translation on either side of a rotation,
+ *     which two `translate` components cannot say.
+ *   - The families appear in the order the individual properties are applied
+ *     in — translate, then rotate, then scale. `transform` composes
+ *     left to right, so `rotate(45deg) translateX(10px)` translates along the
+ *     rotated axis while `translate: 10px; rotate: 45deg` does not.
+ *
+ * Anything else — `skew`, `matrix`, `perspective`, the 3-D functions — is left
+ * whole for the arbitrary-value fallback, which is exact.
+ */
+
+const TRANSFORM_CALL = /^([a-z0-9]+)\((.*)\)$/i;
+const UNITLESS_NUMBER = /^[+-]?(?:\d+\.?\d*|\.\d+)$/;
+
+/** Tailwind spells scale factors as percentages; the two are equivalent. */
+function scalePercentage(argument) {
+    if (argument.endsWith('%')) return argument;
+    if (!UNITLESS_NUMBER.test(argument)) return null;
+    return `${formatNumber(parseFloat(argument) * 100)}%`;
+}
+
+function expandTransform(value) {
+    const tokens = splitTopLevel(value, ' ').filter(Boolean);
+    if (tokens.length === 0) return null;
+
+    const slots = { translate: null, rotate: null, scale: null };
+    const order = [];
+
+    for (const token of tokens) {
+        const call = TRANSFORM_CALL.exec(token);
+        if (!call) return null;
+
+        const name = call[1].toLowerCase();
+        const args = splitTopLevel(call[2], ',')
+            .map((argument) => argument.trim())
+            .filter(Boolean);
+
+        let family;
+        let slotValue;
+
+        if (name === 'translatex' && args.length === 1) {
+            family = 'translate';
+            slotValue = `${args[0]} 0`;
+        } else if (name === 'translatey' && args.length === 1) {
+            family = 'translate';
+            slotValue = `0 ${args[0]}`;
+        } else if (name === 'translate' && args.length <= 2) {
+            family = 'translate';
+            slotValue = `${args[0]} ${args[1] ?? '0'}`;
+        } else if (name === 'rotate' && args.length === 1) {
+            family = 'rotate';
+            slotValue = args[0];
+        } else if (name === 'scalex' && args.length === 1) {
+            family = 'scale';
+            // The untouched axis is Tailwind's own identity for `scale-x-*`.
+            slotValue = `${scalePercentage(args[0])} 1`;
+        } else if (name === 'scaley' && args.length === 1) {
+            family = 'scale';
+            slotValue = `1 ${scalePercentage(args[0])}`;
+        } else if (name === 'scale' && args.length <= 2) {
+            family = 'scale';
+            const x = scalePercentage(args[0]);
+            slotValue = `${x} ${args.length === 2 ? scalePercentage(args[1]) : x}`;
+        } else {
+            return null;
+        }
+
+        if (slotValue.includes('null')) return null;
+        if (slots[family] !== null) return null;
+        slots[family] = slotValue;
+        order.push(family);
+    }
+
+    // The families must already be in application order for the rewrite to
+    // compose the same way.
+    const applied = ['translate', 'rotate', 'scale'].filter((family) => order.includes(family));
+    if (applied.join() !== order.join()) return null;
+
+    return applied.map((family) => [family, slots[family]]);
+}
+
 /**
  * Expand one declaration into the longhands the matcher can look up.
  *
  * Returns an array of `[property, value]` pairs — always at least the input
  * itself, so callers can treat this as a total function.
  */
-export function expandDeclaration(property, value) {
+export function expandDeclaration(property, value, rawValue) {
     const prop = normalizeProperty(property);
     const val = normalizeValue(value);
     const identity = [[prop, val]];
@@ -403,6 +600,14 @@ export function expandDeclaration(property, value) {
 
     if (prop === 'transition') {
         return expandTransition(val) || identity;
+    }
+
+    if (prop === 'font') {
+        return expandFont(val, rawValue ?? val) || identity;
+    }
+
+    if (prop === 'transform') {
+        return expandTransform(val) || identity;
     }
 
     // `background: gray` is a color, not a layer stack. The v1 converter
@@ -560,6 +765,7 @@ export function expandDeclarations(declarations) {
         const candidate = aliasCandidate(prop, val);
 
         let source = [property, value];
+        let rewritten = false;
         if (candidate) {
             const [target, targetValue] = candidate;
             const agreed =
@@ -569,6 +775,7 @@ export function expandDeclarations(declarations) {
                 if (emitted.has(target)) continue;
                 emitted.add(target);
                 source = candidate;
+                rewritten = true;
             }
         } else if (ALIASES[prop] === undefined && valuesByTarget.has(prop)) {
             // The modern spelling of a property some alias also produces. It
@@ -576,7 +783,10 @@ export function expandDeclarations(declarations) {
             emitted.add(prop);
         }
 
-        const pairs = expandDeclaration(source[0], source[1]);
+        // The author's capitalisation, for the expansions that keep it. An
+        // aliased declaration has been rewritten and `raw` no longer describes
+        // it, so it is withheld there.
+        const pairs = expandDeclaration(source[0], source[1], rewritten ? undefined : raw);
 
         // A value that came through whole keeps the author's capitalisation.
         // A shorthand that was split has been rewritten by the time it gets

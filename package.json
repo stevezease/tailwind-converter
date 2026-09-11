@@ -30,6 +30,7 @@
   },
   "scripts": {
     "build:map": "node scripts/build-map.mjs",
+    "build:docs-pages": "node scripts/build-docs-pages.mjs",
     "prebuild": "npm run build:map",
     "build": "gatsby build",
     "develop": "gatsby develop",

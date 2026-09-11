@@ -560,9 +560,10 @@ describe('the transition shorthand', () => {
 
 describe('arbitrary values print what was written', () => {
     it('keeps the capitalisation of a value it could not match', () => {
-        // CSS does not care, but `transform-[translatey(-2px)]` is not what
-        // anybody typed.
-        expect(classesFor('.a { transform: translateY(-2px); }')).toBe('transform-[translateY(-2px)]');
+        // CSS does not care, but `transform-[rotatey(30deg)]` is not what
+        // anybody typed. `rotateY` is a 3-D function with no individual
+        // property, so it stays whole where `translateY` is now decomposed.
+        expect(classesFor('.a { transform: rotateY(30deg); }')).toBe('transform-[rotateY(30deg)]');
         expect(classesFor('.a { font-family: ui-monospace, SFMono-Regular, monospace; }')).toBe(
             'font-[ui-monospace,_SFMono-Regular,_monospace]'
         );
@@ -587,5 +588,104 @@ describe('arbitrary values print what was written', () => {
     it('still matches regardless of case', () => {
         expect(classesFor('.a { COLOR: RED; }')).toBe('text-red-500');
         expect(classesFor('.a { transform: rotateY(180deg); }')).toBe('rotate-y-180');
+    });
+});
+
+describe('font shorthand', () => {
+    it('splits weight, size, line-height and family', () => {
+        expect(classesFor('.a { font: 600 14px/1.5 ui-sans-serif, system-ui; }')).toBe(
+            'font-[ui-sans-serif,_system-ui] text-sm leading-normal font-semibold'
+        );
+    });
+
+    it('reads the optional prefix in any order and drops `normal`', () => {
+        expect(classesFor('.a { font: italic bold 16px Georgia, serif; }')).toBe(
+            'font-[Georgia,_serif] text-base font-bold italic'
+        );
+        // `normal` is the initial value of all four optional properties, so it
+        // contributes nothing.
+        expect(classesFor('.a { font: normal normal 400 1rem system-ui; }')).toBe('font-[system-ui] text-base font-normal');
+    });
+
+    it('keeps the family the author wrote', () => {
+        expect(classesFor('.a { font: 14px "Helvetica Neue", Arial; }')).toBe(
+            'font-["Helvetica_Neue",_Arial] text-sm'
+        );
+    });
+
+    it('accepts a slash written with spaces around it', () => {
+        const expected = 'font-[Arial] text-sm leading-normal';
+        expect(classesFor('.a { font: 14px/1.5 Arial; }')).toBe(expected);
+        expect(classesFor('.a { font: 14px / 1.5 Arial; }')).toBe(expected);
+        expect(classesFor('.a { font: 14px/ 1.5 Arial; }')).toBe(expected);
+        expect(classesFor('.a { font: 14px /1.5 Arial; }')).toBe(expected);
+    });
+
+    it('leaves a system font whole', () => {
+        // `font: menu` sets a whole system font; there is no size or family to
+        // split out, and inventing one would be a lie.
+        expect(classesFor('.a { font: menu; }')).toBe('[font:menu]');
+    });
+
+    it('leaves a shorthand missing a size or a family whole', () => {
+        expect(classesFor('.a { font: bold; }')).toBe('[font:bold]');
+    });
+});
+
+describe('transform shorthand', () => {
+    it('reaches the individual-property utilities', () => {
+        // Tailwind v4 sets `translate`, `rotate` and `scale`, not `transform`,
+        // so the function form reached none of them before.
+        expect(classesFor('.a { transform: translateY(-2px); }')).toBe('-translate-y-0.5');
+        expect(classesFor('.a { transform: translateX(1rem); }')).toBe('translate-x-4');
+        expect(classesFor('.a { transform: rotate(-45deg); }')).toBe('-rotate-45');
+        expect(classesFor('.a { transform: scale(0.75); }')).toBe('scale-75');
+        expect(classesFor('.a { transform: scaleX(0.5); }')).toBe('scale-x-50');
+    });
+
+    it('combines families that are already in application order', () => {
+        expect(classesFor('.a { transform: translateY(-2px) rotate(45deg); }')).toBe('-translate-y-0.5 rotate-45');
+    });
+
+    it('refuses an order the individual properties cannot reproduce', () => {
+        // `transform` composes left to right, so rotating first means the
+        // translation runs along the rotated axis. `translate: …; rotate: …`
+        // always translates first, whatever the order they are written in.
+        expect(classesFor('.a { transform: rotate(45deg) translateY(-2px); }')).toBe(
+            'transform-[rotate(45deg)_translateY(-2px)]'
+        );
+    });
+
+    it('refuses a family that appears twice', () => {
+        // A translation on either side of a rotation is not two components of
+        // one `translate`.
+        expect(classesFor('.a { transform: translateX(1px) rotate(45deg) translateY(2px); }')).toBe(
+            'transform-[translateX(1px)_rotate(45deg)_translateY(2px)]'
+        );
+    });
+
+    it('leaves functions with no individual property whole', () => {
+        expect(classesFor('.a { transform: matrix(1, 0, 0, 1, 10, 20); }')).toBe(
+            'transform-[matrix(1,_0,_0,_1,_10,_20)]'
+        );
+        expect(classesFor('.a { transform: perspective(400px); }')).toBe('transform-[perspective(400px)]');
+        expect(classesFor('.a { transform: none; }')).toBe('transform-none');
+    });
+});
+
+describe('negative utilities', () => {
+    it('matches the negative utility instead of an arbitrary value', () => {
+        // These are indexed from Tailwind's own class list; before that they
+        // fell through to `rotate-[-45deg]` and `[translate:0_-0.125rem]`.
+        expect(classesFor('.a { rotate: -45deg; }')).toBe('-rotate-45');
+        expect(classesFor('.a { translate: 0 -0.125rem; }')).toBe('-translate-y-0.5');
+        expect(classesFor('.a { margin: -8px; }')).toBe('-m-2');
+    });
+
+    it('prefers a utility with a name of its own over a negation', () => {
+        // Tailwind spells -0.025em twice: `tracking-tight` is the name,
+        // `-tracking-wide` is arithmetic on a different one.
+        expect(classesFor('.a { letter-spacing: -0.025em; }')).toBe('tracking-tight');
+        expect(classesFor('.a { letter-spacing: -0.05em; }')).toBe('tracking-tighter');
     });
 });
