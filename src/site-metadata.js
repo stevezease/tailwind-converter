@@ -29,7 +29,22 @@ module.exports = {
 
     titleSuffix: `Tailwind v${tailwindMajor}`,
 
-    description: `Paste your CSS and get v${tailwindMajor} Tailwind classes. Up to Date. No Sign Ups. No Install.`,
+    /**
+     * The name Google already prints above the result, inferred from the
+     * domain. Declaring it makes the displayed name a decision rather than a
+     * guess, and gives a link unfurl something better than a hostname.
+     */
+    siteName: `Tailwind Converter`,
+
+    /**
+     * Written to the ~155 characters a result actually shows, and spent on the
+     * interaction rather than on the implementation. Someone searching for a
+     * converter wants to know they can paste and be done; that the map is
+     * generated from the installed Tailwind is the better engineering story
+     * but answers a worry they do not have yet. It keeps its place in the
+     * <title> as the version, and in the prose for whoever reads that far.
+     */
+    description: `Paste CSS on the left, copy Tailwind v${tailwindMajor} classes on the right. Converts as you type — no account, no install, nothing uploaded.`,
 
     author: `@StevenJin`,
     siteUrl: `https://tailwind-converter.netlify.app`,

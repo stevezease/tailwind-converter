@@ -73,6 +73,7 @@ export const Head = ({ pageContext }) => {
             <meta name="description" content={description} />
             <meta property="og:title" content={title} />
             <meta property="og:description" content={description} />
+            <meta property="og:site_name" content={siteMetadata.siteName} />
             <meta property="og:type" content="website" />
             <meta property="og:url" content={url} />
             <meta name="twitter:card" content="summary" />

@@ -140,13 +140,29 @@ const IndexPage = () => {
                         <h2 className="text-2xl font-semibold tracking-tight">
                             Converting CSS to Tailwind
                         </h2>
+                        {/* Google quotes this paragraph rather than the meta
+                            description — it reads as body content, and the tool
+                            above it is markup with almost no prose in it. So the
+                            first sentence is written to the ~155 characters a
+                            result shows, and it describes the interaction: paste
+                            here, copy there, nothing in the way. How the mapping
+                            is built is the more interesting claim to the person
+                            who built it and the least interesting one to someone
+                            who just wants their padding converted, so it waits
+                            two paragraphs for a reader who has already clicked. */}
                         <p className="mt-4 text-base leading-relaxed text-slate-700">
-                            Paste a stylesheet on the left and each rule comes back as the Tailwind
-                            classes that reproduce it. Shorthands are expanded before matching, so a
-                            four-value <span className="font-mono text-[13px]">padding</span> becomes
-                            the right combination of side classes rather than failing outright.
-                            Min-width media queries become breakpoint prefixes, and pseudo-classes
-                            become the matching variant.
+                            Paste a stylesheet on the left and the Tailwind classes appear on the
+                            right as you type. Click any rule to copy its classes. There is nothing
+                            to install and no account to make, and nothing you paste leaves your
+                            browser.
+                        </p>
+                        <p className="mt-3 text-base leading-relaxed text-slate-700">
+                            Each rule comes back as the classes that reproduce it. Shorthands are
+                            expanded before matching, so a four-value{' '}
+                            <span className="font-mono text-[13px]">padding</span> becomes the right
+                            combination of side classes rather than failing outright. Min-width
+                            media queries become breakpoint prefixes, and pseudo-classes become the
+                            matching variant.
                         </p>
                         <p className="mt-3 text-base leading-relaxed text-slate-700">
                             The conversion table is generated from Tailwind v
@@ -157,10 +173,9 @@ const IndexPage = () => {
                             Nothing is uploaded — the conversion runs in your browser.
                         </p>
                         <p className="mt-3 text-base leading-relaxed text-slate-700">
-                            Where CSS has no Tailwind equivalent, the output says so instead of
-                            quietly dropping it. Off-scale values become arbitrary values in square
-                            brackets, and rules that utilities genuinely cannot express — a
-                            descendant selector, say — are flagged with the reason.
+                            Off-scale values become arbitrary values in square brackets, and rules
+                            that utilities genuinely cannot express — a descendant selector, say —
+                            are flagged with the reason rather than quietly dropped.
                         </p>
 
                         <h2 className="mt-10 text-2xl font-semibold tracking-tight">
@@ -231,6 +246,7 @@ export const Head = () => (
         <meta name="description" content={siteMetadata.description} />
         <meta property="og:title" content={pageTitle} />
         <meta property="og:description" content={siteMetadata.description} />
+        <meta property="og:site_name" content={siteMetadata.siteName} />
         <meta property="og:type" content="website" />
         <meta property="og:url" content={pageUrl} />
         <meta name="twitter:card" content="summary" />
