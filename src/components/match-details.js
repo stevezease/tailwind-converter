@@ -269,6 +269,27 @@ const AlsoSets = ({ added }) =>
  */
 export const PILL_FRAME = 'relative inline-flex items-center';
 
+/**
+ * The one card that is open, if any.
+ *
+ * Every pill keeps its own `open` state, but leaving a pill only *schedules*
+ * the close — so a pointer sweeping along a row opens the next card while the
+ * one behind it is still serving out its grace period, and the cards pile up.
+ * The cards are siblings on the page rather than in one React subtree, so the
+ * arbitration lives outside the component: whoever opens closes whoever was
+ * open.
+ */
+let closeOpenCard = null;
+
+const claimOpenCard = (close) => {
+    if (closeOpenCard && closeOpenCard !== close) closeOpenCard();
+    closeOpenCard = close;
+};
+
+const releaseOpenCard = (close) => {
+    if (closeOpenCard === close) closeOpenCard = null;
+};
+
 const MatchDetails = ({ match, declarations, variants, settings, children }) => {
     const [open, setOpen] = useState(false);
     const [position, setPosition] = useState(null);
@@ -282,6 +303,13 @@ const MatchDetails = ({ match, declarations, variants, settings, children }) => 
             hideTimer.current = null;
         }
     }, []);
+
+    /* `hide` is declared above `show` because `show` closes over it. */
+    const hide = useCallback(() => {
+        cancelHide();
+        releaseOpenCard(hide);
+        setOpen(false);
+    }, [cancelHide]);
 
     const show = useCallback(() => {
         cancelHide();
@@ -300,13 +328,9 @@ const MatchDetails = ({ match, declarations, variants, settings, children }) => 
             bottom: window.innerHeight - rect.top,
             width,
         });
+        claimOpenCard(hide);
         setOpen(true);
-    }, [cancelHide]);
-
-    const hide = useCallback(() => {
-        cancelHide();
-        setOpen(false);
-    }, [cancelHide]);
+    }, [cancelHide, hide]);
 
     /**
      * Close, but not straight away.
@@ -319,10 +343,16 @@ const MatchDetails = ({ match, declarations, variants, settings, children }) => 
      */
     const scheduleHide = useCallback(() => {
         cancelHide();
-        hideTimer.current = setTimeout(() => setOpen(false), 120);
-    }, [cancelHide]);
+        hideTimer.current = setTimeout(hide, 120);
+    }, [cancelHide, hide]);
 
-    useEffect(() => cancelHide, [cancelHide]);
+    useEffect(
+        () => () => {
+            cancelHide();
+            releaseOpenCard(hide);
+        },
+        [cancelHide, hide],
+    );
 
     useEffect(() => {
         if (!open) return undefined;
